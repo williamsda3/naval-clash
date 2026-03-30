@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naval Clash</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    keyframes: {
+                        wave: {
+                            '0%, 100%': { backgroundPosition: '0% 50%' },
+                            '50%': { backgroundPosition: '100% 50%' }
+                        },
+                        march: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-2px)' }
+                        },
+                        slideInRight: {
+                            from: { transform: 'translateX(120px)', opacity: '0' },
+                            to: { transform: 'translateX(0)', opacity: '1' }
+                        },
+                        cardPlay: {
+                            to: { transform: 'translateY(-60px) scale(0.5)', opacity: '0' }
+                        },
+                        damageFlash: {
+                            '0%, 100%': { filter: 'brightness(1)' },
+                            '50%': { filter: 'brightness(3) saturate(0)' }
+                        },
+                        burst: {
+                            '0%': { transform: 'scale(0)', opacity: '1' },
+                            '100%': { transform: 'scale(2.5)', opacity: '0' }
+                        },
+                        harborShake: {
+                            '0%, 100%': { transform: 'translateX(0)' },
+                            '20%': { transform: 'translateX(-6px) rotate(-1deg)' },
+                            '40%': { transform: 'translateX(6px) rotate(1deg)' },
+                            '60%': { transform: 'translateX(-3px)' },
+                            '80%': { transform: 'translateX(3px)' }
+                        },
+                        resourcePulse: {
+                            '0%': { transform: 'scale(1)' },
+                            '50%': { transform: 'scale(1.3)', color: '#fbbf24' },
+                            '100%': { transform: 'scale(1)' }
+                        },
+                        floatUp: {
+                            '0%': { transform: 'translateY(0)', opacity: '1' },
+                            '100%': { transform: 'translateY(-30px)', opacity: '0' }
+                        },
+                        torpedoFlash: {
+                            '0%': { opacity: '0', transform: 'scaleX(0)' },
+                            '20%': { opacity: '1', transform: 'scaleX(1)' },
+                            '100%': { opacity: '0', transform: 'scaleX(1)' }
+                        }
+                    },
+                    animation: {
+                        wave: 'wave 8s ease-in-out infinite',
+                        march: 'march 0.6s ease-in-out infinite',
+                        slideInRight: 'slideInRight 0.4s ease-out',
+                        cardPlay: 'cardPlay 0.3s ease-in forwards',
+                        damageFlash: 'damageFlash 0.3s ease-out',
+                        burst: 'burst 0.6s ease-out forwards',
+                        harborShake: 'harborShake 0.5s ease-in-out',
+                        resourcePulse: 'resourcePulse 0.4s ease-out',
+                        floatUp: 'floatUp 0.8s ease-out forwards',
+                        torpedoFlash: 'torpedoFlash 0.6s ease-out forwards'
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; overflow-x: hidden; }
+
+        .ocean-bg {
+            background: linear-gradient(135deg, #0a1628, #0f2847, #0a1f3d, #0d1b3e);
+            background-size: 400% 400%;
+            animation: wave 12s ease-in-out infinite;
+        }
+
+        .lane-bg {
+            background: linear-gradient(180deg,
+                rgba(15, 40, 80, 0.4) 0%,
+                rgba(20, 60, 110, 0.3) 50%,
+                rgba(15, 40, 80, 0.4) 100%
+            );
+        }
+
+        .island-strip {
+            background: repeating-linear-gradient(90deg,
+                rgba(34, 197, 94, 0.25) 0px,
+                rgba(34, 197, 94, 0.35) 30px,
+                rgba(22, 163, 74, 0.2) 30px,
+                rgba(22, 163, 74, 0.3) 60px
+            );
+        }
+
+        .island-gap {
+            background: rgba(20, 60, 110, 0.3) !important;
+        }
+
+        .harbor-structure {
+            background: linear-gradient(180deg,
+                rgba(100, 116, 139, 0.6) 0%,
+                rgba(71, 85, 105, 0.8) 50%,
+                rgba(51, 65, 85, 0.9) 100%
+            );
+            border: 2px solid rgba(148, 163, 184, 0.4);
+        }
+
+        .unit-sprite {
+            transition: left 0.18s linear;
+            will-change: left;
+        }
+
+        .hp-bar-fill {
+            transition: width 0.3s ease-out;
+        }
+
+        .card {
+            transition: all 0.2s ease-out;
+            cursor: pointer;
+        }
+        .card:hover:not(.card-disabled) {
+            transform: translateY(-8px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+        }
+        .card-selected {
+            transform: translateY(-16px) !important;
+            box-shadow: 0 12px 30px rgba(59, 130, 246, 0.5) !important;
+        }
+        .card-disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .lane-highlight {
+            transition: background-color 0.2s;
+        }
+        .lane-highlight:hover {
+            background-color: rgba(59, 130, 246, 0.15) !important;
+        }
+        .lane-deploy-active {
+            background-color: rgba(59, 130, 246, 0.1);
+            box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.15);
+        }
+
+        .wave-lines {
+            background-image:
+                repeating-linear-gradient(0deg,
+                    transparent,
+                    transparent 8px,
+                    rgba(59, 130, 246, 0.04) 8px,
+                    rgba(59, 130, 246, 0.04) 9px
+                );
+        }
+
+        @keyframes wave {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .deck-card {
+            transition: all 0.2s ease-out;
+        }
+        .deck-card:hover {
+            transform: translateY(-4px);
+        }
+        .deck-card-selected {
+            outline: 2px solid #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.5); border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        let socket = null;
+        const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? `http://${window.location.hostname}:3001`
+            : window.location.origin;
+
+        // ============================================================
+        // UNIT ICONS & COLORS
+        // ============================================================
+
+        const UNIT_ICONS = {
+            patrol_boat: { icon: '\u26F5', color: '#94a3b8', accent: '#ef4444' },
+            mine_layer: { icon: '\uD83D\uDCA3', color: '#f97316', accent: '#f97316' },
+            submarine: { icon: '\uD83D\uDEF3\uFE0F', color: '#14b8a6', accent: '#14b8a6' },
+            gunboat: { icon: '\uD83D\uDD2B', color: '#ef4444', accent: '#ef4444' },
+            destroyer: { icon: '\u2693', color: '#3b82f6', accent: '#3b82f6' },
+            repair_ship: { icon: '\uD83D\uDD27', color: '#22c55e', accent: '#22c55e' },
+            sea_wall: { icon: '\uD83E\uDDF1', color: '#64748b', accent: '#64748b' },
+            torpedo_barrage: { icon: '\uD83D\uDE80', color: '#a855f7', accent: '#a855f7' },
+            battleship: { icon: '\uD83D\uDEA2', color: '#dc2626', accent: '#dc2626' },
+            aircraft_carrier: { icon: '\u2708\uFE0F', color: '#eab308', accent: '#eab308' }
+        };
+
+        const UNIT_CATEGORIES = {
+            patrol_boat: 'offense',
+            mine_layer: 'utility',
+            submarine: 'offense',
+            gunboat: 'offense',
+            destroyer: 'defense',
+            repair_ship: 'support',
+            sea_wall: 'defense',
+            torpedo_barrage: 'spell',
+            battleship: 'offense',
+            aircraft_carrier: 'support'
+        };
+
+        const CATEGORY_COLORS = {
+            offense: { bg: 'from-red-900/60 to-red-800/40', border: 'border-red-500/40', stripe: 'bg-red-500' },
+            defense: { bg: 'from-blue-900/60 to-blue-800/40', border: 'border-blue-500/40', stripe: 'bg-blue-500' },
+            support: { bg: 'from-green-900/60 to-green-800/40', border: 'border-green-500/40', stripe: 'bg-green-500' },
+            utility: { bg: 'from-orange-900/60 to-orange-800/40', border: 'border-orange-500/40', stripe: 'bg-orange-500' },
+            spell: { bg: 'from-purple-900/60 to-purple-800/40', border: 'border-purple-500/40', stripe: 'bg-purple-500' }
+        };
+
+        // ============================================================
+        // MAIN APP COMPONENT
+        // ============================================================
+
+        function NavalClashGame() {
+            const [screen, setScreen] = useState('menu');
+            const [playerName, setPlayerName] = useState('');
+            const [lobbyCode, setLobbyCode] = useState('');
+            const [joinCode, setJoinCode] = useState('');
+            const [connected, setConnected] = useState(false);
+            const [error, setError] = useState('');
+            const [isHost, setIsHost] = useState(false);
+            const [opponentName, setOpponentName] = useState('');
+            const [waitingForOpponent, setWaitingForOpponent] = useState(false);
+
+            // Deck selection
+            const [availableUnits, setAvailableUnits] = useState({});
+            const [selectedDeck, setSelectedDeck] = useState([]);
+            const [deckReady, setDeckReady] = useState(false);
+            const [opponentDeckReady, setOpponentDeckReady] = useState(false);
+            const [countdown, setCountdown] = useState(null);
+
+            // Game state
+            const [playerRole, setPlayerRole] = useState(null);
+            const [resources, setResources] = useState(5);
+            const [harborHp, setHarborHp] = useState(20);
+            const [enemyHarborHp, setEnemyHarborHp] = useState(20);
+            const [hand, setHand] = useState([]);
+            const [units, setUnits] = useState([]);
+            const [selectedCard, setSelectedCard] = useState(null);
+            const [gameLog, setGameLog] = useState([]);
+            const [events, setEvents] = useState([]);
+            const [winner, setWinner] = useState(null);
+            const [winnerRole, setWinnerRole] = useState(null);
+            const [gameStats, setGameStats] = useState(null);
+            const [showTutorial, setShowTutorial] = useState(false);
+
+            // Animation state
+            const [explosions, setExplosions] = useState([]);
+            const [floatingTexts, setFloatingTexts] = useState([]);
+            const [harborShaking, setHarborShaking] = useState({ left: false, right: false });
+            const [resourcePulsing, setResourcePulsing] = useState(false);
+            const prevResourceRef = useRef(5);
+            const logRef = useRef(null);
+
+            const addLog = useCallback((message) => {
+                setGameLog(prev => {
+                    const next = [...prev, { time: new Date().toLocaleTimeString(), message }];
+                    return next.slice(-50); // keep last 50
+                });
+            }, []);
+
+            // Auto-scroll log
+            useEffect(() => {
+                if (logRef.current) {
+                    logRef.current.scrollTop = logRef.current.scrollHeight;
+                }
+            }, [gameLog]);
+
+            // Resource pulse animation
+            useEffect(() => {
+                if (resources !== prevResourceRef.current) {
+                    if (resources > prevResourceRef.current) {
+                        setResourcePulsing(true);
+                        setTimeout(() => setResourcePulsing(false), 400);
+                    }
+                    prevResourceRef.current = resources;
+                }
+            }, [resources]);
+
+            // Process game events for animations
+            useEffect(() => {
+                if (events.length === 0) return;
+
+                for (const evt of events) {
+                    if (evt.type === 'unit_death' || evt.type === 'mine_explode') {
+                        const id = `exp_${Date.now()}_${Math.random()}`;
+                        setExplosions(prev => [...prev, { id, col: evt.col, lane: evt.lane }]);
+                        setTimeout(() => {
+                            setExplosions(prev => prev.filter(e => e.id !== id));
+                        }, 600);
+                    }
+                    if (evt.type === 'unit_damage') {
+                        const id = `ft_${Date.now()}_${Math.random()}`;
+                        setFloatingTexts(prev => [...prev, { id, col: evt.col, lane: evt.lane, text: `-${evt.damage}`, color: '#ef4444' }]);
+                        setTimeout(() => {
+                            setFloatingTexts(prev => prev.filter(f => f.id !== id));
+                        }, 800);
+                    }
+                    if (evt.type === 'heal') {
+                        const id = `ft_${Date.now()}_${Math.random()}`;
+                        setFloatingTexts(prev => [...prev, { id, col: evt.col, lane: evt.lane, text: `+${evt.amount}`, color: '#22c55e' }]);
+                        setTimeout(() => {
+                            setFloatingTexts(prev => prev.filter(f => f.id !== id));
+                        }, 800);
+                    }
+                    if (evt.type === 'harbor_damage') {
+                        const isMyHarbor = evt.target === playerRole;
+                        const side = isMyHarbor ? 'left' : 'right';
+                        setHarborShaking(prev => ({ ...prev, [side]: true }));
+                        setTimeout(() => {
+                            setHarborShaking(prev => ({ ...prev, [side]: false }));
+                        }, 500);
+                        addLog(isMyHarbor ?
+                            `Your harbor took ${evt.damage} damage! (${evt.remainingHp} HP)` :
+                            `Enemy harbor took ${evt.damage} damage! (${evt.remainingHp} HP)`
+                        );
+                    }
+                    if (evt.type === 'torpedo_barrage') {
+                        addLog(`Torpedo barrage in lane ${evt.lane + 1}!`);
+                    }
+                    if (evt.type === 'unit_spawned' && evt.fromCarrier) {
+                        addLog(`Carrier spawned a Patrol Boat in lane ${evt.lane + 1}`);
+                    }
+                }
+                setEvents([]);
+            }, [events, playerRole, addLog]);
+
+            // ---- Socket Setup ----
+
+            const initSocket = useCallback(() => {
+                if (socket) return socket;
+                socket = window.io(SERVER_URL);
+
+                socket.on('connect', () => {
+                    setConnected(true);
+                    setError('');
+                });
+
+                socket.on('connect_error', () => {
+                    setError('Cannot connect to server. Start the backend: npm start');
+                });
+
+                socket.on('lobbyCreated', ({ code }) => {
+                    setLobbyCode(code);
+                    setWaitingForOpponent(true);
+                });
+
+                socket.on('opponentJoined', ({ opponentName: name }) => {
+                    setOpponentName(name);
+                    setWaitingForOpponent(false);
+                });
+
+                socket.on('deckSelectionPhase', ({ availableUnits: units }) => {
+                    setAvailableUnits(units);
+                    setScreen('deckSelection');
+                });
+
+                socket.on('deckConfirmed', () => {
+                    setDeckReady(true);
+                });
+
+                socket.on('opponentDeckReady', () => {
+                    setOpponentDeckReady(true);
+                });
+
+                socket.on('countdown', ({ seconds }) => {
+                    setCountdown(seconds);
+                    const interval = setInterval(() => {
+                        setCountdown(prev => {
+                            if (prev <= 1) {
+                                clearInterval(interval);
+                                return null;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+                });
+
+                socket.on('gameStart', ({ playerRole: role }) => {
+                    setPlayerRole(role);
+                    setScreen('playing');
+                    setResources(5);
+                    setHarborHp(20);
+                    setEnemyHarborHp(20);
+                    setUnits([]);
+                    setGameLog([]);
+                    setSelectedCard(null);
+                    addLog('Battle started!');
+                });
+
+                socket.on('gameState', (state) => {
+                    setUnits(state.units);
+                    setResources(state.resources);
+                    setHarborHp(state.harborHp);
+                    setEnemyHarborHp(state.enemyHarborHp);
+                    setHand(state.hand);
+                    if (state.events && state.events.length > 0) {
+                        setEvents(state.events);
+                    }
+                });
+
+                socket.on('deployConfirmed', ({ cardIndex, unitType }) => {
+                    setSelectedCard(null);
+                });
+
+                socket.on('deployFailed', ({ reason }) => {
+                    setError(reason);
+                    setTimeout(() => setError(''), 2000);
+                });
+
+                socket.on('gameOver', ({ winner: w, winnerRole: wr, stats }) => {
+                    setWinner(w);
+                    setWinnerRole(wr);
+                    setGameStats(stats);
+                    setScreen('gameOver');
+                });
+
+                socket.on('opponentDisconnected', () => {
+                    setError('Opponent disconnected');
+                    setTimeout(() => {
+                        setScreen('menu');
+                        setError('');
+                        resetState();
+                    }, 3000);
+                });
+
+                socket.on('error', ({ message }) => {
+                    setError(message);
+                    setTimeout(() => setError(''), 3000);
+                });
+
+                return socket;
+            }, [addLog]);
+
+            function resetState() {
+                setLobbyCode('');
+                setJoinCode('');
+                setOpponentName('');
+                setWaitingForOpponent(false);
+                setAvailableUnits({});
+                setSelectedDeck([]);
+                setDeckReady(false);
+                setOpponentDeckReady(false);
+                setCountdown(null);
+                setPlayerRole(null);
+                setHand([]);
+                setUnits([]);
+                setSelectedCard(null);
+                setGameLog([]);
+                setWinner(null);
+                setWinnerRole(null);
+                setGameStats(null);
+            }
+
+            function createLobby() {
+                if (!playerName.trim()) {
+                    setError('Please enter your name');
+                    return;
+                }
+                setIsHost(true);
+                const s = initSocket();
+                if (s) {
+                    s.emit('createLobby', { playerName });
+                    setScreen('lobby');
+                }
+            }
+
+            function joinLobby() {
+                if (!playerName.trim() || !joinCode.trim()) {
+                    setError('Please enter your name and lobby code');
+                    return;
+                }
+                setIsHost(false);
+                const s = initSocket();
+                if (s) {
+                    s.emit('joinLobby', { code: joinCode.toUpperCase(), playerName });
+                    setScreen('lobby');
+                }
+            }
+
+            function deployUnit(lane) {
+                if (selectedCard === null || !socket) return;
+                socket.emit('deployUnit', { cardIndex: selectedCard, lane });
+            }
+
+            function toggleDeckUnit(unitType) {
+                if (deckReady) return;
+                setSelectedDeck(prev => {
+                    if (prev.includes(unitType)) {
+                        return prev.filter(u => u !== unitType);
+                    }
+                    if (prev.length >= 8) return prev;
+                    return [...prev, unitType];
+                });
+            }
+
+            function confirmDeck() {
+                if (selectedDeck.length !== 8 || !socket) return;
+                socket.emit('selectDeck', { units: selectedDeck });
+            }
+
+            function goToMenu() {
+                if (socket) {
+                    socket.disconnect();
+                    socket = null;
+                }
+                setConnected(false);
+                resetState();
+                setScreen('menu');
+            }
+
+            useEffect(() => {
+                return () => {
+                    if (socket) {
+                        socket.disconnect();
+                        socket = null;
+                    }
+                };
+            }, []);
+
+            // ============================================================
+            // MENU SCREEN
+            // ============================================================
+
+            if (screen === 'menu') {
+                return (
+                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-cyan-500/30">
+                            <div className="text-center mb-8">
+                                <h1 className="text-5xl font-black tracking-tight mb-2">
+                                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">NAVAL</span>
+                                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400 ml-3">CLASH</span>
+                                </h1>
+                                <p className="text-slate-400 text-sm tracking-widest uppercase">Real-Time Naval Combat</p>
+                                <div className="mt-3 flex justify-center gap-1">
+                                    {['\u26F5','\uD83D\uDEA2','\u2693','\uD83D\uDE80','\u2708\uFE0F'].map((e, i) => (
+                                        <span key={i} className="text-lg opacity-50">{e}</span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="bg-red-900/50 border border-red-500/50 rounded-lg p-3 mb-4 text-red-200 text-sm text-center">
+                                    {error}
+                                </div>
+                            )}
+
+                            <div className="mb-6">
+                                <label className="block text-slate-300 mb-2 font-semibold text-sm uppercase tracking-wide">Commander Name</label>
+                                <input
+                                    type="text"
+                                    value={playerName}
+                                    onChange={(e) => setPlayerName(e.target.value)}
+                                    placeholder="Enter your name"
+                                    className="w-full bg-slate-700/80 text-white rounded-lg p-3 border border-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
+                                    onKeyDown={(e) => e.key === 'Enter' && createLobby()}
+                                />
+                            </div>
+
+                            <div className="space-y-3">
+                                <button
+                                    onClick={createLobby}
+                                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-lg transition-all shadow-lg shadow-cyan-900/30 active:scale-[0.98]"
+                                >
+                                    Create New Battle
+                                </button>
+
+                                <div className="relative my-4">
+                                    <div className="absolute inset-0 flex items-center">
+                                        <div className="w-full border-t border-slate-600/50"></div>
+                                    </div>
+                                    <div className="relative flex justify-center">
+                                        <span className="px-3 bg-slate-800/90 text-slate-500 text-xs uppercase tracking-widest">or join</span>
+                                    </div>
+                                </div>
+
+                                <input
+                                    type="text"
+                                    value={joinCode}
+                                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                                    placeholder="ABCD"
+                                    maxLength={4}
+                                    className="w-full bg-slate-700/80 text-white text-center text-2xl tracking-[0.3em] rounded-lg p-3 border border-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 uppercase transition-all font-mono"
+                                    onKeyDown={(e) => e.key === 'Enter' && joinCode.length === 4 && joinLobby()}
+                                />
+
+                                <button
+                                    onClick={joinLobby}
+                                    disabled={joinCode.length !== 4}
+                                    className={`w-full ${
+                                        joinCode.length === 4
+                                            ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 shadow-lg shadow-indigo-900/30'
+                                            : 'bg-slate-700 cursor-not-allowed opacity-50'
+                                    } text-white font-bold py-4 rounded-lg transition-all active:scale-[0.98]`}
+                                >
+                                    Join Battle
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => setShowTutorial(!showTutorial)}
+                                className="w-full mt-4 bg-slate-700/60 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-lg transition-all text-sm"
+                            >
+                                {showTutorial ? 'Close' : 'How to Play'}
+                            </button>
+
+                            {showTutorial && (
+                                <div className="mt-4 bg-slate-700/60 rounded-lg p-5 space-y-3 text-sm">
+                                    <h3 className="text-white font-bold text-base">How to Play</h3>
+                                    <div>
+                                        <h4 className="text-cyan-400 font-semibold">Objective</h4>
+                                        <p className="text-slate-300">Destroy your opponent's harbor (20 HP) using naval units deployed in real-time.</p>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-cyan-400 font-semibold">Resources</h4>
+                                        <p className="text-slate-300">You gain 1 resource per second (max 20). Spend resources to deploy units from your hand.</p>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-cyan-400 font-semibold">Lanes</h4>
+                                        <p className="text-slate-300">3 ocean lanes. Deploy units to any lane. Most units are lane-locked; some can switch lanes.</p>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-cyan-400 font-semibold">Cards</h4>
+                                        <p className="text-slate-300">Pick 8 units before the match. You see 4 cards at a time. Playing a card draws a new one.</p>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-cyan-400 font-semibold">Combat</h4>
+                                        <p className="text-slate-300">Units auto-march and fight. Some target the base, others hunt enemy units. Strategy is in deployment timing and lane choice.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ============================================================
+            // LOBBY SCREEN
+            // ============================================================
+
+            if (screen === 'lobby') {
+                return (
+                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-cyan-500/30 text-center">
+                            {waitingForOpponent ? (
+                                <>
+                                    <h2 className="text-2xl font-bold text-white mb-2">Waiting for Opponent</h2>
+                                    <p className="text-slate-400 mb-6 text-sm">Share this code with your opponent</p>
+                                    <div className="bg-slate-900/80 rounded-xl px-6 py-5 mb-6 border border-slate-700">
+                                        <span className="text-5xl font-black text-cyan-400 tracking-[0.4em] font-mono">{lobbyCode}</span>
+                                    </div>
+                                    <div className="flex justify-center gap-1.5">
+                                        {[0,1,2].map(i => (
+                                            <div key={i} className="w-2.5 h-2.5 bg-cyan-500 rounded-full animate-pulse" style={{ animationDelay: `${i * 0.2}s` }}></div>
+                                        ))}
+                                    </div>
+                                    <button onClick={goToMenu} className="mt-6 text-slate-500 hover:text-slate-300 text-sm transition-colors">Cancel</button>
+                                </>
+                            ) : (
+                                <>
+                                    <h2 className="text-2xl font-bold text-white mb-2">Opponent Found!</h2>
+                                    <p className="text-xl text-cyan-400 font-semibold">{opponentName}</p>
+                                    <p className="text-slate-400 mt-3 text-sm">Entering deck selection...</p>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ============================================================
+            // DECK SELECTION SCREEN
+            // ============================================================
+
+            if (screen === 'deckSelection') {
+                const unitEntries = Object.entries(availableUnits);
+
+                return (
+                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
+                        <div className="max-w-4xl w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-cyan-500/30">
+                            {countdown !== null ? (
+                                <div className="text-center py-20">
+                                    <p className="text-slate-400 text-lg mb-4">Battle begins in</p>
+                                    <span className="text-8xl font-black text-cyan-400">{countdown}</span>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="text-center mb-6">
+                                        <h2 className="text-2xl font-bold text-white">Choose Your Fleet</h2>
+                                        <p className="text-slate-400 text-sm mt-1">Select 8 of 10 units for your deck</p>
+                                        <div className="mt-2 flex justify-center items-center gap-3">
+                                            <span className={`text-lg font-bold ${selectedDeck.length === 8 ? 'text-green-400' : 'text-cyan-400'}`}>
+                                                {selectedDeck.length}/8
+                                            </span>
+                                            <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-300 ${selectedDeck.length === 8 ? 'bg-green-500' : 'bg-cyan-500'}`}
+                                                    style={{ width: `${(selectedDeck.length / 8) * 100}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-5 gap-3 mb-6">
+                                        {unitEntries.map(([key, def]) => {
+                                            const isSelected = selectedDeck.includes(key);
+                                            const cat = UNIT_CATEGORIES[key] || 'offense';
+                                            const catColor = CATEGORY_COLORS[cat];
+                                            const unitVis = UNIT_ICONS[key];
+
+                                            return (
+                                                <div
+                                                    key={key}
+                                                    onClick={() => toggleDeckUnit(key)}
+                                                    className={`deck-card relative rounded-xl p-3 cursor-pointer border-2 transition-all ${
+                                                        isSelected
+                                                            ? 'border-cyan-400 bg-gradient-to-b from-cyan-900/40 to-slate-800/80 shadow-lg shadow-cyan-900/30'
+                                                            : `border-slate-600/50 bg-gradient-to-b ${catColor.bg} hover:border-slate-500`
+                                                    }`}
+                                                >
+                                                    {/* Category stripe */}
+                                                    <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl ${catColor.stripe}`}></div>
+
+                                                    {isSelected && (
+                                                        <div className="absolute top-2 right-2 w-5 h-5 bg-cyan-500 rounded-full flex items-center justify-center">
+                                                            <span className="text-white text-xs font-bold">{'\u2713'}</span>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="text-center">
+                                                        <span className="text-3xl block mb-1">{unitVis.icon}</span>
+                                                        <span className="text-white font-bold text-xs block leading-tight">{def.name}</span>
+                                                        <div className="flex justify-center gap-2 mt-2 text-xs">
+                                                            <span className="text-yellow-400" title="Cost">{'\uD83D\uDC8E'}{def.cost}</span>
+                                                            {!def.isSpell && <span className="text-red-400" title="HP">{'\u2764\uFE0F'}{def.maxHp}</span>}
+                                                            {def.damage > 0 && <span className="text-orange-400" title="Damage">{'\u2694\uFE0F'}{def.damage}</span>}
+                                                        </div>
+                                                        <p className="text-slate-400 text-[10px] mt-1.5 leading-tight">{def.description}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            {deckReady && <span className="text-green-400 text-sm font-semibold">You're ready!</span>}
+                                            {opponentDeckReady && <span className="text-cyan-400 text-sm">Opponent is ready</span>}
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <button onClick={goToMenu} className="px-4 py-2 text-slate-400 hover:text-white text-sm transition-colors">
+                                                Leave
+                                            </button>
+                                            <button
+                                                onClick={confirmDeck}
+                                                disabled={selectedDeck.length !== 8 || deckReady}
+                                                className={`px-8 py-3 rounded-lg font-bold transition-all ${
+                                                    selectedDeck.length === 8 && !deckReady
+                                                        ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shadow-lg shadow-green-900/30 active:scale-[0.98]'
+                                                        : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                {deckReady ? 'Waiting...' : 'Ready!'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ============================================================
+            // GAME SCREEN
+            // ============================================================
+
+            if (screen === 'playing') {
+                const isP1 = playerRole === 'player1';
+
+                // Transform unit positions for display (P2 sees mirrored)
+                const displayUnits = units.map(u => ({
+                    ...u,
+                    displayCol: isP1 ? u.col : (19 - u.col),
+                    isOwn: u.owner === playerRole,
+                    isFriendly: u.owner === playerRole
+                }));
+
+                const myHarborHp = harborHp;
+                const theirHarborHp = enemyHarborHp;
+
+                const hpBarColor = (hp, max) => {
+                    const pct = hp / max;
+                    if (pct > 0.6) return 'bg-green-500';
+                    if (pct > 0.3) return 'bg-yellow-500';
+                    return 'bg-red-500';
+                };
+
+                return (
+                    <div className="min-h-screen ocean-bg flex flex-col">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-700/50">
+                            {/* My Harbor */}
+                            <div className={`flex items-center gap-3 ${harborShaking.left ? 'animate-harborShake' : ''}`}>
+                                <div className="text-left">
+                                    <span className="text-slate-400 text-xs uppercase tracking-wide block">Your Harbor</span>
+                                    <span className="text-white font-black text-xl">{myHarborHp}</span>
+                                    <span className="text-slate-500 text-sm">/20</span>
+                                </div>
+                                <div className="w-28 h-3 bg-slate-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full hp-bar-fill ${hpBarColor(myHarborHp, 20)}`}
+                                        style={{ width: `${(myHarborHp / 20) * 100}%` }}></div>
+                                </div>
+                            </div>
+
+                            {/* Resources */}
+                            <div className="flex items-center gap-2">
+                                <span className="text-2xl">{'\uD83D\uDC8E'}</span>
+                                <span className={`text-yellow-400 font-black text-2xl ${resourcePulsing ? 'animate-resourcePulse' : ''}`}>
+                                    {resources}
+                                </span>
+                                <span className="text-slate-500 text-sm">/{MAX_RESOURCES || 20}</span>
+                            </div>
+
+                            {/* Enemy Harbor */}
+                            <div className={`flex items-center gap-3 ${harborShaking.right ? 'animate-harborShake' : ''}`}>
+                                <div className="w-28 h-3 bg-slate-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full hp-bar-fill ${hpBarColor(theirHarborHp, 20)}`}
+                                        style={{ width: `${(theirHarborHp / 20) * 100}%` }}></div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-slate-400 text-xs uppercase tracking-wide block">Enemy Harbor</span>
+                                    <span className="text-white font-black text-xl">{theirHarborHp}</span>
+                                    <span className="text-slate-500 text-sm">/20</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {error && (
+                            <div className="mx-4 mt-2 bg-red-900/50 border border-red-500/50 rounded-lg p-2 text-red-200 text-sm text-center">
+                                {error}
+                            </div>
+                        )}
+
+                        {/* Battle Grid */}
+                        <div className="flex-1 flex flex-col justify-center px-4 py-3">
+                            <div className="relative w-full max-w-5xl mx-auto">
+                                {/* Lanes */}
+                                {[0, 1, 2].map(lane => (
+                                    <React.Fragment key={lane}>
+                                        <div
+                                            className={`relative h-[80px] mb-0 wave-lines lane-bg rounded-lg border border-slate-700/30 ${
+                                                selectedCard !== null ? 'lane-highlight lane-deploy-active cursor-pointer' : ''
+                                            }`}
+                                            onClick={() => selectedCard !== null && deployUnit(lane)}
+                                        >
+                                            {/* Lane label */}
+                                            <div className="absolute left-2 top-1 text-[10px] text-slate-500 uppercase tracking-wider font-semibold z-10">
+                                                Lane {lane + 1}
+                                            </div>
+
+                                            {/* Harbor zones */}
+                                            <div className={`harbor-structure absolute left-0 top-0 bottom-0 w-[5%] rounded-l-lg flex items-center justify-center ${
+                                                harborShaking.left ? 'animate-harborShake' : ''
+                                            }`}>
+                                                <span className="text-xl">{'\uD83C\uDFE0'}</span>
+                                            </div>
+                                            <div className={`harbor-structure absolute right-0 top-0 bottom-0 w-[5%] rounded-r-lg flex items-center justify-center ${
+                                                harborShaking.right ? 'animate-harborShake' : ''
+                                            }`}>
+                                                <span className="text-xl">{'\uD83C\uDFE0'}</span>
+                                            </div>
+
+                                            {/* Deploy zone indicator */}
+                                            {selectedCard !== null && (
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                    <span className="text-cyan-400/40 text-sm font-bold uppercase tracking-widest">Click to Deploy</span>
+                                                </div>
+                                            )}
+
+                                            {/* Units in this lane */}
+                                            {displayUnits.filter(u => u.lane === lane).map(u => {
+                                                const leftPct = (u.displayCol / 19) * 90 + 5; // 5% to 95% (within harbors)
+                                                const unitVis = UNIT_ICONS[u.type] || { icon: '?', color: '#fff' };
+                                                const hpPct = (u.hp / u.maxHp) * 100;
+
+                                                return (
+                                                    <div
+                                                        key={u.id}
+                                                        className={`unit-sprite absolute flex flex-col items-center ${
+                                                            u.state === 'marching' ? 'animate-march' : ''
+                                                        }`}
+                                                        style={{
+                                                            left: `${leftPct}%`,
+                                                            top: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            zIndex: 10
+                                                        }}
+                                                    >
+                                                        {/* HP Bar */}
+                                                        <div className="w-8 h-1 bg-slate-700/80 rounded-full overflow-hidden mb-0.5">
+                                                            <div
+                                                                className={`h-full rounded-full hp-bar-fill ${
+                                                                    hpPct > 60 ? 'bg-green-400' : hpPct > 30 ? 'bg-yellow-400' : 'bg-red-400'
+                                                                }`}
+                                                                style={{ width: `${hpPct}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        {/* Unit icon */}
+                                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg ${
+                                                            u.isFriendly
+                                                                ? 'bg-blue-900/80 border-2 border-blue-400/60'
+                                                                : 'bg-red-900/80 border-2 border-red-400/60'
+                                                        } ${u.state === 'fighting' ? 'animate-damageFlash' : ''}`}
+                                                         style={{ filter: u.isFriendly ? 'none' : 'hue-rotate(0deg)' }}
+                                                        >
+                                                            <span style={{ transform: u.isFriendly ? 'scaleX(1)' : 'scaleX(-1)' }}>
+                                                                {unitVis.icon}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {/* Explosions */}
+                                            {explosions.filter(e => e.lane === lane).map(e => {
+                                                const leftPct = (isP1 ? e.col / 19 : (19 - e.col) / 19) * 90 + 5;
+                                                return (
+                                                    <div
+                                                        key={e.id}
+                                                        className="absolute animate-burst"
+                                                        style={{
+                                                            left: `${leftPct}%`,
+                                                            top: '50%',
+                                                            transform: 'translate(-50%, -50%)',
+                                                            zIndex: 20
+                                                        }}
+                                                    >
+                                                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-orange-500 to-red-500 opacity-80"></div>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {/* Floating texts */}
+                                            {floatingTexts.filter(f => f.lane === lane).map(f => {
+                                                const leftPct = (isP1 ? f.col / 19 : (19 - f.col) / 19) * 90 + 5;
+                                                return (
+                                                    <div
+                                                        key={f.id}
+                                                        className="absolute animate-floatUp font-black text-sm pointer-events-none"
+                                                        style={{
+                                                            left: `${leftPct}%`,
+                                                            top: '20%',
+                                                            color: f.color,
+                                                            zIndex: 25,
+                                                            textShadow: '0 0 4px rgba(0,0,0,0.8)'
+                                                        }}
+                                                    >
+                                                        {f.text}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Island chain between lanes */}
+                                        {lane < 2 && (
+                                            <div className="h-[12px] flex">
+                                                {Array.from({ length: 20 }).map((_, col) => {
+                                                    const isGap = [5, 10, 15].includes(col);
+                                                    return (
+                                                        <div
+                                                            key={col}
+                                                            className={`flex-1 ${isGap ? 'island-gap' : 'island-strip'}`}
+                                                        >
+                                                            {isGap && (
+                                                                <div className="h-full flex items-center justify-center">
+                                                                    <div className="w-1.5 h-1.5 bg-cyan-500/30 rounded-full"></div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Card Hand + Log */}
+                        <div className="px-4 pb-3">
+                            <div className="max-w-5xl mx-auto flex gap-4">
+                                {/* Card Hand */}
+                                <div className="flex-1">
+                                    <div className="flex justify-center gap-3">
+                                        {hand.map((card, idx) => {
+                                            const def = UNIT_ICONS[card.unitType] || { icon: '?', color: '#fff' };
+                                            const cat = UNIT_CATEGORIES[card.unitType] || 'offense';
+                                            const catColor = CATEGORY_COLORS[cat];
+                                            const canAfford = resources >= card.cost;
+                                            const isSelected = selectedCard === idx;
+
+                                            return (
+                                                <div
+                                                    key={`${card.unitType}_${idx}`}
+                                                    onClick={() => {
+                                                        if (!canAfford) return;
+                                                        setSelectedCard(isSelected ? null : idx);
+                                                    }}
+                                                    className={`card relative w-[100px] rounded-xl border-2 p-2.5 select-none
+                                                        ${isSelected ? 'card-selected border-cyan-400 bg-gradient-to-b from-cyan-900/60 to-slate-800' :
+                                                          canAfford ? `${catColor.border} bg-gradient-to-b ${catColor.bg} hover:border-slate-400` :
+                                                          'card-disabled border-slate-700 bg-slate-800/60'}`}
+                                                >
+                                                    {/* Category stripe */}
+                                                    <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${catColor.stripe}`}></div>
+
+                                                    <div className="text-center">
+                                                        <span className="text-2xl block">{def.icon}</span>
+                                                        <span className="text-white font-bold text-[10px] block mt-0.5 leading-tight">{card.name}</span>
+                                                        <div className="flex justify-center gap-1.5 mt-1.5">
+                                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                                                canAfford ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-500'
+                                                            }`}>
+                                                                {'\uD83D\uDC8E'}{card.cost}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {isSelected && (
+                                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full flex items-center justify-center shadow-lg">
+                                                            <span className="text-white text-[8px]">{'\u2191'}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {selectedCard !== null && (
+                                        <p className="text-center text-cyan-400/70 text-xs mt-2 animate-pulse">
+                                            Click a lane to deploy {hand[selectedCard]?.name}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Game Log */}
+                                <div className="w-56 bg-slate-900/60 rounded-lg border border-slate-700/40 p-2">
+                                    <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">Battle Log</div>
+                                    <div ref={logRef} className="h-[90px] overflow-y-auto scrollbar-thin space-y-0.5">
+                                        {gameLog.map((entry, i) => (
+                                            <div key={i} className="text-[10px] leading-snug">
+                                                <span className="text-slate-600">{entry.time}</span>
+                                                <span className="text-slate-400 ml-1">{entry.message}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // ============================================================
+            // GAME OVER SCREEN
+            // ============================================================
+
+            if (screen === 'gameOver') {
+                const didWin = winnerRole === playerRole;
+                const isDraw = winnerRole === 'draw';
+
+                return (
+                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-cyan-500/30 text-center">
+                            <div className="text-6xl mb-4">
+                                {isDraw ? '\u2694\uFE0F' : didWin ? '\uD83C\uDFC6' : '\uD83D\uDCA5'}
+                            </div>
+                            <h2 className={`text-4xl font-black mb-2 ${
+                                isDraw ? 'text-yellow-400' : didWin ? 'text-green-400' : 'text-red-400'
+                            }`}>
+                                {isDraw ? 'DRAW!' : didWin ? 'VICTORY!' : 'DEFEAT'}
+                            </h2>
+                            <p className="text-slate-400 mb-6">
+                                {isDraw ? 'Both harbors destroyed!' : `${winner} wins!`}
+                            </p>
+
+                            {gameStats && (
+                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="bg-slate-700/50 rounded-lg p-3">
+                                        <span className="text-slate-400 text-xs block">Your Harbor</span>
+                                        <span className="text-white font-bold text-lg">{gameStats[playerRole]?.harborHp || 0} HP</span>
+                                    </div>
+                                    <div className="bg-slate-700/50 rounded-lg p-3">
+                                        <span className="text-slate-400 text-xs block">Enemy Harbor</span>
+                                        <span className="text-white font-bold text-lg">{gameStats[playerRole === 'player1' ? 'player2' : 'player1']?.harborHp || 0} HP</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={goToMenu}
+                                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-lg transition-all shadow-lg active:scale-[0.98]"
+                            >
+                                Back to Menu
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return null;
+        }
+
+        // ============================================================
+        // RENDER
+        // ============================================================
+
+        const MAX_RESOURCES = 20;
+        ReactDOM.createRoot(document.getElementById('root')).render(<NavalClashGame />);
+    </script>
+</body>
+</html>

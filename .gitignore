@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.log
+.claude/
+*.pdf
+IMPROVEMENTS.md
+NEW_MECHANICS.md
+i.html
