@@ -3,1177 +3,1404 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Naval Clash</title>
+    <title>Combat Tactics - Turn-Based Fighting Game</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    keyframes: {
-                        wave: {
-                            '0%, 100%': { backgroundPosition: '0% 50%' },
-                            '50%': { backgroundPosition: '100% 50%' }
-                        },
-                        march: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-2px)' }
-                        },
-                        slideInRight: {
-                            from: { transform: 'translateX(120px)', opacity: '0' },
-                            to: { transform: 'translateX(0)', opacity: '1' }
-                        },
-                        cardPlay: {
-                            to: { transform: 'translateY(-60px) scale(0.5)', opacity: '0' }
-                        },
-                        damageFlash: {
-                            '0%, 100%': { filter: 'brightness(1)' },
-                            '50%': { filter: 'brightness(3) saturate(0)' }
-                        },
-                        burst: {
-                            '0%': { transform: 'scale(0)', opacity: '1' },
-                            '100%': { transform: 'scale(2.5)', opacity: '0' }
-                        },
-                        harborShake: {
-                            '0%, 100%': { transform: 'translateX(0)' },
-                            '20%': { transform: 'translateX(-6px) rotate(-1deg)' },
-                            '40%': { transform: 'translateX(6px) rotate(1deg)' },
-                            '60%': { transform: 'translateX(-3px)' },
-                            '80%': { transform: 'translateX(3px)' }
-                        },
-                        resourcePulse: {
-                            '0%': { transform: 'scale(1)' },
-                            '50%': { transform: 'scale(1.3)', color: '#fbbf24' },
-                            '100%': { transform: 'scale(1)' }
-                        },
-                        floatUp: {
-                            '0%': { transform: 'translateY(0)', opacity: '1' },
-                            '100%': { transform: 'translateY(-30px)', opacity: '0' }
-                        },
-                        torpedoFlash: {
-                            '0%': { opacity: '0', transform: 'scaleX(0)' },
-                            '20%': { opacity: '1', transform: 'scaleX(1)' },
-                            '100%': { opacity: '0', transform: 'scaleX(1)' }
-                        }
-                    },
-                    animation: {
-                        wave: 'wave 8s ease-in-out infinite',
-                        march: 'march 0.6s ease-in-out infinite',
-                        slideInRight: 'slideInRight 0.4s ease-out',
-                        cardPlay: 'cardPlay 0.3s ease-in forwards',
-                        damageFlash: 'damageFlash 0.3s ease-out',
-                        burst: 'burst 0.6s ease-out forwards',
-                        harborShake: 'harborShake 0.5s ease-in-out',
-                        resourcePulse: 'resourcePulse 0.4s ease-out',
-                        floatUp: 'floatUp 0.8s ease-out forwards',
-                        torpedoFlash: 'torpedoFlash 0.6s ease-out forwards'
-                    }
-                }
-            }
-        };
-    </script>
     <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; overflow-x: hidden; }
-
-        .ocean-bg {
-            background: linear-gradient(135deg, #0a1628, #0f2847, #0a1f3d, #0d1b3e);
-            background-size: 400% 400%;
-            animation: wave 12s ease-in-out infinite;
+        @keyframes damageFloat {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            50% {
+                opacity: 1;
+                transform: translate(-50%, -70%) scale(1.2);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -100%) scale(0.8);
+            }
         }
 
-        .lane-bg {
-            background: linear-gradient(180deg,
-                rgba(15, 40, 80, 0.4) 0%,
-                rgba(20, 60, 110, 0.3) 50%,
-                rgba(15, 40, 80, 0.4) 100%
-            );
+        @keyframes healthPulse {
+            0%, 100% {
+                color: rgb(239, 68, 68);
+                text-shadow: 0 0 10px rgba(239, 68, 68, 0.8);
+            }
+            50% {
+                color: rgb(220, 38, 38);
+                text-shadow: 0 0 20px rgba(239, 68, 68, 1);
+            }
         }
-
-        .island-strip {
-            background: repeating-linear-gradient(90deg,
-                rgba(34, 197, 94, 0.25) 0px,
-                rgba(34, 197, 94, 0.35) 30px,
-                rgba(22, 163, 74, 0.2) 30px,
-                rgba(22, 163, 74, 0.3) 60px
-            );
-        }
-
-        .island-gap {
-            background: rgba(20, 60, 110, 0.3) !important;
-        }
-
-        .harbor-structure {
-            background: linear-gradient(180deg,
-                rgba(100, 116, 139, 0.6) 0%,
-                rgba(71, 85, 105, 0.8) 50%,
-                rgba(51, 65, 85, 0.9) 100%
-            );
-            border: 2px solid rgba(148, 163, 184, 0.4);
-        }
-
-        .unit-sprite {
-            transition: left 0.18s linear;
-            will-change: left;
-        }
-
-        .hp-bar-fill {
-            transition: width 0.3s ease-out;
-        }
-
-        .card {
-            transition: all 0.2s ease-out;
-            cursor: pointer;
-        }
-        .card:hover:not(.card-disabled) {
-            transform: translateY(-8px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
-        }
-        .card-selected {
-            transform: translateY(-16px) !important;
-            box-shadow: 0 12px 30px rgba(59, 130, 246, 0.5) !important;
-        }
-        .card-disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        .lane-highlight {
-            transition: background-color 0.2s;
-        }
-        .lane-highlight:hover {
-            background-color: rgba(59, 130, 246, 0.15) !important;
-        }
-        .lane-deploy-active {
-            background-color: rgba(59, 130, 246, 0.1);
-            box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.15);
-        }
-
-        .wave-lines {
-            background-image:
-                repeating-linear-gradient(0deg,
-                    transparent,
-                    transparent 8px,
-                    rgba(59, 130, 246, 0.04) 8px,
-                    rgba(59, 130, 246, 0.04) 9px
-                );
-        }
-
-        @keyframes wave {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-
-        .deck-card {
-            transition: all 0.2s ease-out;
-        }
-        .deck-card:hover {
-            transform: translateY(-4px);
-        }
-        .deck-card-selected {
-            outline: 2px solid #3b82f6;
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
-        }
-
-        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
-        .scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.5); border-radius: 4px; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        const { useState, useEffect, useRef } = React;
 
+        // Lucide React icons as SVG components
+        const Swords = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 3l-6 6m0 0V4m0 5h5M3 21l6-6m0 0v5m0-5H4" />
+            </svg>
+        );
+
+        const Shield = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.618 5.984A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+        );
+
+        const Zap = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+        );
+
+        const Trophy = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+        );
+
+        const Heart = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+        );
+
+        const Copy = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+        );
+
+        const Check = ({ className }) => (
+            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+        );
+
+        // Socket.io client
         let socket = null;
-        const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-            ? `http://${window.location.hostname}:3001`
-            : window.location.origin;
 
-        // ============================================================
-        // UNIT ICONS & COLORS
-        // ============================================================
-
-        const UNIT_ICONS = {
-            patrol_boat: { icon: '\u26F5', color: '#94a3b8', accent: '#ef4444' },
-            mine_layer: { icon: '\uD83D\uDCA3', color: '#f97316', accent: '#f97316' },
-            submarine: { icon: '\uD83D\uDEF3\uFE0F', color: '#14b8a6', accent: '#14b8a6' },
-            gunboat: { icon: '\uD83D\uDD2B', color: '#ef4444', accent: '#ef4444' },
-            destroyer: { icon: '\u2693', color: '#3b82f6', accent: '#3b82f6' },
-            repair_ship: { icon: '\uD83D\uDD27', color: '#22c55e', accent: '#22c55e' },
-            sea_wall: { icon: '\uD83E\uDDF1', color: '#64748b', accent: '#64748b' },
-            torpedo_barrage: { icon: '\uD83D\uDE80', color: '#a855f7', accent: '#a855f7' },
-            battleship: { icon: '\uD83D\uDEA2', color: '#dc2626', accent: '#dc2626' },
-            aircraft_carrier: { icon: '\u2708\uFE0F', color: '#eab308', accent: '#eab308' }
+        // Helper functions
+        const getBorderColor = (move) => {
+            switch (move) {
+                case 'attack': return 'border-red-500';
+                case 'defend': return 'border-blue-500';
+                case 'charge': return 'border-yellow-500';
+                default: return 'border-purple-500/30';
+            }
         };
 
-        const UNIT_CATEGORIES = {
-            patrol_boat: 'offense',
-            mine_layer: 'utility',
-            submarine: 'offense',
-            gunboat: 'offense',
-            destroyer: 'defense',
-            repair_ship: 'support',
-            sea_wall: 'defense',
-            torpedo_barrage: 'spell',
-            battleship: 'offense',
-            aircraft_carrier: 'support'
+        const getShadowColor = (move) => {
+            switch (move) {
+                case 'attack': return 'shadow-red-500/50';
+                case 'defend': return 'shadow-blue-500/50';
+                case 'charge': return 'shadow-yellow-500/50';
+                default: return '';
+            }
         };
 
-        const CATEGORY_COLORS = {
-            offense: { bg: 'from-red-900/60 to-red-800/40', border: 'border-red-500/40', stripe: 'bg-red-500' },
-            defense: { bg: 'from-blue-900/60 to-blue-800/40', border: 'border-blue-500/40', stripe: 'bg-blue-500' },
-            support: { bg: 'from-green-900/60 to-green-800/40', border: 'border-green-500/40', stripe: 'bg-green-500' },
-            utility: { bg: 'from-orange-900/60 to-orange-800/40', border: 'border-orange-500/40', stripe: 'bg-orange-500' },
-            spell: { bg: 'from-purple-900/60 to-purple-800/40', border: 'border-purple-500/40', stripe: 'bg-purple-500' }
+        // Game Engine
+        class Player {
+            constructor(id, name) {
+                this.id = id;
+                this.name = name;
+                this.maxHP = 5;
+                this.hp = 5;
+                this.baseATK = 1;
+                this.atk = 1;
+                this.blockCount = 0;
+                this.move = null;
+            }
+
+            reset() {
+                this.hp = this.maxHP;
+                this.atk = this.baseATK;
+                this.blockCount = 0;
+                this.move = null;
+            }
+
+            takeDamage(amount) {
+                this.hp = Math.max(0, this.hp - amount);
+            }
+
+            increaseAttack() {
+                this.atk++;
+            }
+
+            resetAttack() {
+                this.atk = this.baseATK;
+            }
+        }
+
+        const MOVES = {
+            ATTACK: 'attack',
+            DEFEND: 'defend',
+            CHARGE: 'charge'
         };
 
-        // ============================================================
-        // MAIN APP COMPONENT
-        // ============================================================
+        class CombatResolver {
+            constructor() {
+                this.resolutions = {
+                    [MOVES.ATTACK]: {
+                        [MOVES.ATTACK]: this.attackVsAttack.bind(this),
+                        [MOVES.DEFEND]: this.attackVsDefend.bind(this),
+                        [MOVES.CHARGE]: this.attackVsCharge.bind(this)
+                    },
+                    [MOVES.DEFEND]: {
+                        [MOVES.ATTACK]: this.defendVsAttack.bind(this),
+                        [MOVES.DEFEND]: this.defendVsDefend.bind(this),
+                        [MOVES.CHARGE]: this.defendVsCharge.bind(this)
+                    },
+                    [MOVES.CHARGE]: {
+                        [MOVES.ATTACK]: this.chargeVsAttack.bind(this),
+                        [MOVES.DEFEND]: this.chargeVsDefend.bind(this),
+                        [MOVES.CHARGE]: this.chargeVsCharge.bind(this)
+                    }
+                };
+            }
 
-        function NavalClashGame() {
-            const [screen, setScreen] = useState('menu');
-            const [playerName, setPlayerName] = useState('');
+            resolve(p1, p2) {
+                const result = {
+                    p1Damage: 0,
+                    p2Damage: 0,
+                    message: '',
+                    p1Effects: [],
+                    p2Effects: []
+                };
+
+                this.resolutions[p1.move][p2.move](p1, p2, result);
+
+                p1.takeDamage(result.p1Damage);
+                p2.takeDamage(result.p2Damage);
+
+                return result;
+            }
+
+            attackVsAttack(p1, p2, result) {
+                const diff = p1.atk - p2.atk;
+
+                if (diff > 0) {
+                    result.p2Damage = diff;
+                    result.message = `${p1.name} overpowered ${p2.name}!`;
+                    result.p1Effects.push('success');
+                } else if (diff < 0) {
+                    result.p1Damage = Math.abs(diff);
+                    result.message = `${p2.name} overpowered ${p1.name}!`;
+                    result.p2Effects.push('success');
+                } else {
+                    result.message = 'Both attacks clashed!';
+                }
+
+                p1.resetAttack();
+                p2.resetAttack();
+                p1.blockCount = 0;
+                p2.blockCount = 0;
+            }
+
+            attackVsDefend(p1, p2, result) {
+                p2.blockCount++;
+
+                if (p2.blockCount > 2) {
+                    result.p2Damage = p1.atk;
+                    result.message = `${p2.name}'s defense shattered!`;
+                    result.p1Effects.push('success');
+                    p2.blockCount = 0;
+                } else {
+                    result.message = `${p2.name} blocked the attack!`;
+                    result.p2Effects.push('blocked');
+                }
+
+                p1.resetAttack();
+                p1.blockCount = 0;
+            }
+
+            attackVsCharge(p1, p2, result) {
+                result.p2Damage = p1.atk;
+                p2.increaseAttack();
+                result.message = `${p1.name} struck ${p2.name} while charging!`;
+                result.p1Effects.push('success');
+                result.p2Effects.push('charged');
+
+                p1.resetAttack();
+                p1.blockCount = 0;
+                p2.blockCount = 0;
+            }
+
+            defendVsAttack(p1, p2, result) {
+                this.attackVsDefend(p2, p1, result);
+                result.message = result.message.replace(p1.name, 'TEMP').replace(p2.name, p1.name).replace('TEMP', p2.name);
+                [result.p1Damage, result.p2Damage] = [result.p2Damage, result.p1Damage];
+                [result.p1Effects, result.p2Effects] = [result.p2Effects, result.p1Effects];
+            }
+
+            defendVsDefend(p1, p2, result) {
+                p1.blockCount++;
+                p2.blockCount++;
+                result.message = 'Both players defended!';
+                result.p1Effects.push('blocked');
+                result.p2Effects.push('blocked');
+            }
+
+            defendVsCharge(p1, p2, result) {
+                p1.blockCount++;
+                p2.increaseAttack();
+                result.message = `${p1.name} defended while ${p2.name} charged!`;
+                result.p1Effects.push('blocked');
+                result.p2Effects.push('charged');
+            }
+
+            chargeVsAttack(p1, p2, result) {
+                this.attackVsCharge(p2, p1, result);
+                result.message = result.message.replace(p1.name, 'TEMP').replace(p2.name, p1.name).replace('TEMP', p2.name);
+                [result.p1Damage, result.p2Damage] = [result.p2Damage, result.p1Damage];
+                [result.p1Effects, result.p2Effects] = [result.p2Effects, result.p1Effects];
+            }
+
+            chargeVsDefend(p1, p2, result) {
+                p1.increaseAttack();
+                p2.blockCount++;
+                result.message = `${p1.name} charged while ${p2.name} defended!`;
+                result.p1Effects.push('charged');
+                result.p2Effects.push('blocked');
+            }
+
+            chargeVsCharge(p1, p2, result) {
+                p1.increaseAttack();
+                p2.increaseAttack();
+                result.message = 'Both players charged up!';
+                result.p1Effects.push('charged');
+                result.p2Effects.push('charged');
+                p1.blockCount = 0;
+                p2.blockCount = 0;
+            }
+        }
+
+        class AI {
+            static chooseMove(player, opponent) {
+                const score = {
+                    [MOVES.ATTACK]: 0,
+                    [MOVES.DEFEND]: 0,
+                    [MOVES.CHARGE]: 0
+                };
+
+                if (player.hp <= opponent.atk && player.blockCount < 2) {
+                    score[MOVES.DEFEND] += 10;
+                }
+
+                if (player.atk > opponent.atk) {
+                    score[MOVES.ATTACK] += 5;
+                }
+
+                if (opponent.blockCount >= 2) {
+                    score[MOVES.ATTACK] += 8;
+                }
+
+                if (opponent.hp <= player.atk) {
+                    score[MOVES.ATTACK] += 20;
+                }
+
+                if (player.hp > opponent.atk + 1) {
+                    score[MOVES.CHARGE] += 3;
+                }
+
+                if (player.blockCount >= 2) {
+                    score[MOVES.DEFEND] = -10;
+                }
+
+                Object.keys(score).forEach(move => {
+                    score[move] += Math.random() * 2;
+                });
+
+                return Object.keys(score).reduce((a, b) => score[a] > score[b] ? a : b);
+            }
+        }
+
+        function CombatGame() {
+            const [player1] = useState(() => new Player(1, 'Player'));
+            const [player2] = useState(() => new Player(2, 'CPU'));
+            const [resolver] = useState(() => new CombatResolver());
+
+            const [gameState, setGameState] = useState('menu');
+            const [p1Move, setP1Move] = useState(null);
+            const [p2Move, setP2Move] = useState(null);
+            const [result, setResult] = useState(null);
+            const [winner, setWinner] = useState(null);
+            const [showTutorial, setShowTutorial] = useState(false);
+            const [damageAnimations, setDamageAnimations] = useState([]);
+            const [effectAnimations, setEffectAnimations] = useState([]);
+            const [p1DamagedRecently, setP1DamagedRecently] = useState(false);
+            const [p2DamagedRecently, setP2DamagedRecently] = useState(false);
+            const [gameMode, setGameMode] = useState(null);
+            const [currentTurn, setCurrentTurn] = useState(1);
+            const [matchScore, setMatchScore] = useState({ p1: 0, p2: 0 });
+            const [bestOf, setBestOf] = useState(3);
+
+            // Online multiplayer state
             const [lobbyCode, setLobbyCode] = useState('');
             const [joinCode, setJoinCode] = useState('');
-            const [connected, setConnected] = useState(false);
-            const [error, setError] = useState('');
             const [isHost, setIsHost] = useState(false);
-            const [opponentName, setOpponentName] = useState('');
+            const isHostRef = useRef(false); // Ref to always have current value
             const [waitingForOpponent, setWaitingForOpponent] = useState(false);
+            const [opponentName, setOpponentName] = useState('');
+            const [connected, setConnected] = useState(false);
+            const [copySuccess, setCopySuccess] = useState(false);
+            const [connectionError, setConnectionError] = useState('');
 
-            // Deck selection
-            const [availableUnits, setAvailableUnits] = useState({});
-            const [selectedDeck, setSelectedDeck] = useState([]);
-            const [deckReady, setDeckReady] = useState(false);
-            const [opponentDeckReady, setOpponentDeckReady] = useState(false);
-            const [countdown, setCountdown] = useState(null);
-
-            // Game state
-            const [playerRole, setPlayerRole] = useState(null);
-            const [resources, setResources] = useState(5);
-            const [harborHp, setHarborHp] = useState(20);
-            const [enemyHarborHp, setEnemyHarborHp] = useState(20);
-            const [hand, setHand] = useState([]);
-            const [units, setUnits] = useState([]);
-            const [selectedCard, setSelectedCard] = useState(null);
-            const [gameLog, setGameLog] = useState([]);
-            const [events, setEvents] = useState([]);
-            const [winner, setWinner] = useState(null);
-            const [winnerRole, setWinnerRole] = useState(null);
-            const [gameStats, setGameStats] = useState(null);
-            const [showTutorial, setShowTutorial] = useState(false);
-
-            // Animation state
-            const [explosions, setExplosions] = useState([]);
-            const [floatingTexts, setFloatingTexts] = useState([]);
-            const [harborShaking, setHarborShaking] = useState({ left: false, right: false });
-            const [harborFiring, setHarborFiring] = useState({ left: false, right: false });
-            const [resourcePulsing, setResourcePulsing] = useState(false);
-            const prevResourceRef = useRef(5);
-            const prevHandRef = useRef([]);
-            const [newCardSlots, setNewCardSlots] = useState(new Set());
-            const logRef = useRef(null);
-
-            const addLog = useCallback((message) => {
-                setGameLog(prev => {
-                    const next = [...prev, { time: new Date().toLocaleTimeString(), message }];
-                    return next.slice(-50); // keep last 50
-                });
-            }, []);
-
-            // Auto-scroll log
-            useEffect(() => {
-                if (logRef.current) {
-                    logRef.current.scrollTop = logRef.current.scrollHeight;
-                }
-            }, [gameLog]);
-
-            // Card slide-in animation when a new card draws
-            useEffect(() => {
-                if (hand.length === 0) { prevHandRef.current = hand; return; }
-                const changed = new Set();
-                hand.forEach((card, idx) => {
-                    const prev = prevHandRef.current[idx];
-                    if (!prev || prev.unitType !== card.unitType) changed.add(idx);
-                });
-                if (changed.size > 0) {
-                    setNewCardSlots(changed);
-                    setTimeout(() => setNewCardSlots(new Set()), 420);
-                }
-                prevHandRef.current = hand;
-            }, [hand]);
-
-            // Resource pulse animation
-            useEffect(() => {
-                if (resources !== prevResourceRef.current) {
-                    if (resources > prevResourceRef.current) {
-                        setResourcePulsing(true);
-                        setTimeout(() => setResourcePulsing(false), 400);
-                    }
-                    prevResourceRef.current = resources;
-                }
-            }, [resources]);
-
-            // Process game events for animations
-            useEffect(() => {
-                if (events.length === 0) return;
-
-                for (const evt of events) {
-                    if (evt.type === 'unit_death' || evt.type === 'mine_explode') {
-                        const id = `exp_${Date.now()}_${Math.random()}`;
-                        setExplosions(prev => [...prev, { id, col: evt.col, lane: evt.lane }]);
-                        setTimeout(() => {
-                            setExplosions(prev => prev.filter(e => e.id !== id));
-                        }, 600);
-                    }
-                    if (evt.type === 'unit_damage') {
-                        const id = `ft_${Date.now()}_${Math.random()}`;
-                        setFloatingTexts(prev => [...prev, { id, col: evt.col, lane: evt.lane, text: `-${evt.damage}`, color: '#ef4444' }]);
-                        setTimeout(() => {
-                            setFloatingTexts(prev => prev.filter(f => f.id !== id));
-                        }, 800);
-                    }
-                    if (evt.type === 'heal') {
-                        const id = `ft_${Date.now()}_${Math.random()}`;
-                        setFloatingTexts(prev => [...prev, { id, col: evt.col, lane: evt.lane, text: `+${evt.amount}`, color: '#22c55e' }]);
-                        setTimeout(() => {
-                            setFloatingTexts(prev => prev.filter(f => f.id !== id));
-                        }, 800);
-                    }
-                    if (evt.type === 'harbor_damage') {
-                        const isMyHarbor = evt.target === playerRole;
-                        const side = isMyHarbor ? 'left' : 'right';
-                        setHarborShaking(prev => ({ ...prev, [side]: true }));
-                        setTimeout(() => {
-                            setHarborShaking(prev => ({ ...prev, [side]: false }));
-                        }, 500);
-                        addLog(isMyHarbor ?
-                            `Your harbor took ${evt.damage} damage! (${evt.remainingHp} HP)` :
-                            `Enemy harbor took ${evt.damage} damage! (${evt.remainingHp} HP)`
-                        );
-                    }
-                    if (evt.type === 'harbor_attack') {
-                        // My harbor fired = left side; enemy harbor fired = right side
-                        const isMyHarbor = evt.owner === playerRole;
-                        const side = isMyHarbor ? 'left' : 'right';
-                        setHarborFiring(prev => ({ ...prev, [side]: true }));
-                        setTimeout(() => setHarborFiring(prev => ({ ...prev, [side]: false })), 300);
-                    }
-                    if (evt.type === 'torpedo_barrage') {
-                        addLog(`Torpedo barrage in lane ${evt.lane + 1}!`);
-                    }
-                    if (evt.type === 'unit_spawned' && evt.fromCarrier) {
-                        addLog(`Carrier spawned a Patrol Boat in lane ${evt.lane + 1}`);
-                    }
-                }
-                setEvents([]);
-            }, [events, playerRole, addLog]);
-
-            // ---- Socket Setup ----
-
-            const initSocket = useCallback(() => {
-                if (socket) return socket;
-                socket = window.io(SERVER_URL);
-
-                socket.on('connect', () => {
-                    setConnected(true);
-                    setError('');
-                });
-
-                socket.on('connect_error', () => {
-                    setError('Cannot connect to server. Start the backend: npm start');
-                });
-
-                socket.on('lobbyCreated', ({ code }) => {
-                    setLobbyCode(code);
-                    setWaitingForOpponent(true);
-                });
-
-                socket.on('opponentJoined', ({ opponentName: name }) => {
-                    setOpponentName(name);
-                    setWaitingForOpponent(false);
-                });
-
-                socket.on('deckSelectionPhase', ({ availableUnits: units }) => {
-                    setAvailableUnits(units);
-                    setScreen('deckSelection');
-                });
-
-                socket.on('deckConfirmed', () => {
-                    setDeckReady(true);
-                });
-
-                socket.on('opponentDeckReady', () => {
-                    setOpponentDeckReady(true);
-                });
-
-                socket.on('countdown', ({ seconds }) => {
-                    setCountdown(seconds);
-                    const interval = setInterval(() => {
-                        setCountdown(prev => {
-                            if (prev <= 1) {
-                                clearInterval(interval);
-                                return null;
-                            }
-                            return prev - 1;
-                        });
-                    }, 1000);
-                });
-
-                socket.on('gameStart', ({ playerRole: role }) => {
-                    setPlayerRole(role);
-                    setScreen('playing');
-                    setResources(5);
-                    setHarborHp(20);
-                    setEnemyHarborHp(20);
-                    setUnits([]);
-                    setGameLog([]);
-                    setSelectedCard(null);
-                    addLog('Battle started!');
-                });
-
-                socket.on('gameState', (state) => {
-                    setUnits(state.units);
-                    setResources(state.resources);
-                    setHarborHp(state.harborHp);
-                    setEnemyHarborHp(state.enemyHarborHp);
-                    setHand(state.hand);
-                    if (state.events && state.events.length > 0) {
-                        setEvents(state.events);
-                    }
-                });
-
-                socket.on('deployConfirmed', ({ cardIndex, unitType }) => {
-                    setSelectedCard(null);
-                });
-
-                socket.on('deployFailed', ({ reason }) => {
-                    setError(reason);
-                    setTimeout(() => setError(''), 2000);
-                });
-
-                socket.on('gameOver', ({ winner: w, winnerRole: wr, stats }) => {
-                    setWinner(w);
-                    setWinnerRole(wr);
-                    setGameStats(stats);
-                    setScreen('gameOver');
-                });
-
-                socket.on('opponentDisconnected', () => {
-                    setError('Opponent disconnected');
-                    setTimeout(() => {
-                        setScreen('menu');
-                        setError('');
-                        resetState();
-                    }, 3000);
-                });
-
-                socket.on('error', ({ message }) => {
-                    setError(message);
-                    setTimeout(() => setError(''), 3000);
-                });
-
-                return socket;
-            }, [addLog]);
-
-            function resetState() {
-                setLobbyCode('');
-                setJoinCode('');
-                setOpponentName('');
-                setWaitingForOpponent(false);
-                setAvailableUnits({});
-                setSelectedDeck([]);
-                setDeckReady(false);
-                setOpponentDeckReady(false);
-                setCountdown(null);
-                setPlayerRole(null);
-                setHand([]);
-                setUnits([]);
-                setSelectedCard(null);
-                setGameLog([]);
+            const startGame = (mode = 'cpu') => {
+                player1.reset();
+                player2.reset();
+                setP1Move(null);
+                setP2Move(null);
+                setResult(null);
                 setWinner(null);
-                setWinnerRole(null);
-                setGameStats(null);
-            }
+                setGameState('playing');
+                setEffectAnimations([]);
+                setGameMode(mode);
+                setCurrentTurn(1);
+                setP1DamagedRecently(false);
+                setP2DamagedRecently(false);
+            };
 
-            function createLobby() {
-                if (!playerName.trim()) {
-                    setError('Please enter your name');
-                    return;
+            const startNewMatch = (mode, bestOfValue) => {
+                setBestOf(bestOfValue);
+                setMatchScore({ p1: 0, p2: 0 });
+                startGame(mode);
+            };
+
+            const initSocket = () => {
+                if (socket) return socket;
+
+                if (typeof window.io === 'undefined') {
+                    setConnectionError('Socket.io not loaded. Please refresh the page.');
+                    return null;
                 }
-                setIsHost(true);
-                const s = initSocket();
-                if (s) {
-                    s.emit('createLobby', { playerName });
-                    setScreen('lobby');
+
+                const SERVER_URL = 'http://localhost:3001';
+
+                try {
+                    socket = window.io(SERVER_URL);
+
+                    socket.on('connect', () => {
+                        setConnected(true);
+                        setConnectionError('');
+                    });
+
+                    socket.on('connect_error', (error) => {
+                        setConnectionError('Cannot connect to server. Start the backend server first.');
+                    });
+
+                    socket.on('disconnect', () => {
+                        setConnected(false);
+                    });
+
+                    socket.on('lobbyCreated', ({ code }) => {
+                        setLobbyCode(code);
+                        setWaitingForOpponent(true);
+                    });
+
+                    socket.on('opponentJoined', ({ opponentName: name }) => {
+                        console.log('👥 Opponent joined! Name:', name, 'I am host:', isHostRef.current);
+                        setOpponentName(name);
+                        setWaitingForOpponent(false);
+                        player2.name = name;
+                        startGame('online');
+                    });
+
+                    socket.on('lobbyJoined', ({ opponentName: name, isHost: host }) => {
+                        console.log('🎯 Lobby joined! isHost:', host);
+                        setOpponentName(name);
+                        setIsHost(host);
+                        isHostRef.current = host; // Update ref immediately
+                        player2.name = host ? 'You' : name;
+                        player1.name = host ? name : 'You';
+                        startGame('online');
+                    });
+
+                    socket.on('opponentMove', ({ move }) => {
+                        console.log('📨 Received opponent move:', move, 'isHost:', isHostRef.current);
+                        if (isHostRef.current) {
+                            setP2Move(move);
+                        } else {
+                            setP1Move(move);
+                        }
+                    });
+
+                    socket.on('opponentDisconnected', () => {
+                        setConnectionError('Opponent disconnected');
+                        setTimeout(() => {
+                            setGameState('menu');
+                            cleanupSocket();
+                        }, 3000);
+                    });
+
+                    socket.on('error', ({ message }) => {
+                        setConnectionError(message);
+                    });
+
+                    return socket;
+                } catch (err) {
+                    setConnectionError('Failed to initialize connection');
+                    return null;
                 }
-            }
+            };
 
-            function joinLobby() {
-                if (!playerName.trim() || !joinCode.trim()) {
-                    setError('Please enter your name and lobby code');
-                    return;
-                }
-                setIsHost(false);
-                const s = initSocket();
-                if (s) {
-                    s.emit('joinLobby', { code: joinCode.toUpperCase(), playerName });
-                    setScreen('lobby');
-                }
-            }
-
-            function deployUnit(lane) {
-                if (selectedCard === null || !socket) return;
-                socket.emit('deployUnit', { cardIndex: selectedCard, lane });
-            }
-
-            function toggleDeckUnit(unitType) {
-                if (deckReady) return;
-                setSelectedDeck(prev => {
-                    if (prev.includes(unitType)) {
-                        return prev.filter(u => u !== unitType);
-                    }
-                    if (prev.length >= 8) return prev;
-                    return [...prev, unitType];
-                });
-            }
-
-            function confirmDeck() {
-                if (selectedDeck.length !== 8 || !socket) return;
-                socket.emit('selectDeck', { units: selectedDeck });
-            }
-
-            function goToMenu() {
+            const cleanupSocket = () => {
                 if (socket) {
                     socket.disconnect();
                     socket = null;
                 }
                 setConnected(false);
-                resetState();
-                setScreen('menu');
-            }
+                setLobbyCode('');
+                setJoinCode('');
+                setWaitingForOpponent(false);
+                setOpponentName('');
+                setConnectionError('');
+            };
+
+            const createLobby = (bestOfValue) => {
+                setBestOf(bestOfValue);
+                setGameMode('online');
+                setIsHost(true);
+                isHostRef.current = true; // Set ref immediately
+                setConnectionError('');
+
+                const s = initSocket();
+                if (!s) {
+                    setConnectionError('Failed to initialize socket connection');
+                    return;
+                }
+
+                if (!s.connected) {
+                    setConnectionError('Connecting to server...');
+                    s.once('connect', () => {
+                        s.emit('createLobby', { playerName: 'Player 1', bestOf: bestOfValue });
+                        setGameState('lobby');
+                    });
+                } else {
+                    s.emit('createLobby', { playerName: 'Player 1', bestOf: bestOfValue });
+                    setGameState('lobby');
+                }
+            };
+
+            const joinLobby = () => {
+                if (!joinCode.trim()) {
+                    setConnectionError('Please enter a lobby code');
+                    return;
+                }
+
+                setGameMode('online');
+                setIsHost(false);
+                isHostRef.current = false; // Set ref immediately
+                const s = initSocket();
+                if (s) {
+                    s.emit('joinLobby', { code: joinCode.toUpperCase(), playerName: 'Player 2' });
+                    setGameState('lobby');
+                }
+            };
+
+            const copyLobbyCode = () => {
+                navigator.clipboard.writeText(lobbyCode);
+                setCopySuccess(true);
+                setTimeout(() => setCopySuccess(false), 2000);
+            };
+
+            useEffect(() => {
+                if (gameMode === 'online' && p1Move && p2Move && !result) {
+                    setTimeout(() => resolveCombat(p1Move, p2Move), 800);
+                }
+            }, [p1Move, p2Move, gameMode]);
+
+            // Keep ref in sync with state
+            useEffect(() => {
+                isHostRef.current = isHost;
+            }, [isHost]);
+
+            const makeMove = (move, playerNum = 1) => {
+                if (gameState !== 'playing') return;
+
+                if (gameMode === 'online') {
+                    console.log('🎮 Making move:', move, 'isHost:', isHost, 'p1Move:', p1Move, 'p2Move:', p2Move);
+                    if (isHost && !p1Move) {
+                        setP1Move(move);
+                        socket?.emit('makeMove', { move });
+                        console.log('✅ Host sent move:', move);
+                    } else if (!isHost && !p2Move) {
+                        setP2Move(move);
+                        socket?.emit('makeMove', { move });
+                        console.log('✅ Guest sent move:', move);
+                    }
+                    return;
+                }
+
+                if (gameMode === 'local') {
+                    if (playerNum === 1 && !p1Move) {
+                        setP1Move(move);
+                        setCurrentTurn(2);
+                    } else if (playerNum === 2 && !p2Move && p1Move) {
+                        setP2Move(move);
+                        setCurrentTurn(null);
+                        setTimeout(() => resolveCombat(p1Move, move), 800);
+                    }
+                    return;
+                }
+
+                if (p1Move || gameMode !== 'cpu') return;
+
+                setP1Move(move);
+
+                setTimeout(() => {
+                    const aiMove = AI.chooseMove(player2, player1);
+                    setP2Move(aiMove);
+                    setTimeout(() => resolveCombat(move, aiMove), 800);
+                }, 500);
+            };
+
+            const resolveCombat = (p1MoveChoice, p2MoveChoice) => {
+                player1.move = p1MoveChoice;
+                player2.move = p2MoveChoice;
+                const combatResult = resolver.resolve(player1, player2);
+                setResult(combatResult);
+
+                const anims = [];
+                if (combatResult.p1Damage > 0) {
+                    anims.push({ player: 1, damage: combatResult.p1Damage, id: Date.now() });
+                    setP1DamagedRecently(true);
+                    setTimeout(() => setP1DamagedRecently(false), 2500);
+                }
+                if (combatResult.p2Damage > 0) {
+                    anims.push({ player: 2, damage: combatResult.p2Damage, id: Date.now() + 1 });
+                    setP2DamagedRecently(true);
+                    setTimeout(() => setP2DamagedRecently(false), 2500);
+                }
+                setDamageAnimations(anims);
+
+                const effects = [];
+                if (combatResult.p1Effects.includes('blocked')) {
+                    effects.push({ player: 1, type: 'blocked', id: Date.now() + 100 });
+                }
+                if (combatResult.p1Effects.includes('charged')) {
+                    effects.push({ player: 1, type: 'charged', id: Date.now() + 101 });
+                }
+                if (combatResult.p2Effects.includes('blocked')) {
+                    effects.push({ player: 2, type: 'blocked', id: Date.now() + 102 });
+                }
+                if (combatResult.p2Effects.includes('charged')) {
+                    effects.push({ player: 2, type: 'charged', id: Date.now() + 103 });
+                }
+                setEffectAnimations(effects);
+
+                setTimeout(() => {
+                    if (player1.hp <= 0 || player2.hp <= 0) {
+                        const roundWinner = player1.hp <= 0 ? player2 : player1;
+                        setWinner(roundWinner);
+
+                        const newScore = { ...matchScore };
+                        if (roundWinner.id === 1) newScore.p1++;
+                        else newScore.p2++;
+                        setMatchScore(newScore);
+
+                        if (bestOf === 1) {
+                            setGameState('matchOver');
+                            if (gameMode === 'online') cleanupSocket();
+                        } else {
+                            const winsNeeded = Math.ceil(bestOf / 2);
+                            if (newScore.p1 >= winsNeeded || newScore.p2 >= winsNeeded) {
+                                setGameState('matchOver');
+                                if (gameMode === 'online') cleanupSocket();
+                            } else {
+                                setGameState('roundOver');
+                            }
+                        }
+                    } else {
+                        setP1Move(null);
+                        setP2Move(null);
+                        setResult(null);
+                        setCurrentTurn(1);
+                    }
+
+                    setDamageAnimations([]);
+                    setEffectAnimations([]);
+                }, 2000);
+            };
+
+            useEffect(() => {
+                if (gameState !== 'playing') return;
+
+                const handleKeyPress = (e) => {
+                    if (gameMode === 'cpu' && p1Move) return;
+                    if (gameMode === 'online') {
+                        if (isHost && p1Move) return;
+                        if (!isHost && p2Move) return;
+                    }
+                    if (gameMode === 'local') {
+                        if (currentTurn === 1 && p1Move) return;
+                        if (currentTurn === 2 && p2Move) return;
+                    }
+
+                    if (currentTurn === 1 || gameMode === 'cpu' || (gameMode === 'online' && isHost)) {
+                        if (e.key.toLowerCase() === 'w') makeMove(MOVES.ATTACK, 1);
+                        if (e.key.toLowerCase() === 'a' && player1.blockCount < 2) makeMove(MOVES.DEFEND, 1);
+                        if (e.key.toLowerCase() === 'd') makeMove(MOVES.CHARGE, 1);
+                    }
+
+                    if (gameMode === 'local' && currentTurn === 2) {
+                        if (e.key === 'ArrowUp') makeMove(MOVES.ATTACK, 2);
+                        if (e.key === 'ArrowLeft' && player2.blockCount < 2) makeMove(MOVES.DEFEND, 2);
+                        if (e.key === 'ArrowRight') makeMove(MOVES.CHARGE, 2);
+                    }
+                    if (gameMode === 'online' && !isHost) {
+                        if (e.key === 'ArrowUp') makeMove(MOVES.ATTACK, 2);
+                        if (e.key === 'ArrowLeft' && player2.blockCount < 2) makeMove(MOVES.DEFEND, 2);
+                        if (e.key === 'ArrowRight') makeMove(MOVES.CHARGE, 2);
+                    }
+                };
+
+                window.addEventListener('keydown', handleKeyPress);
+                return () => window.removeEventListener('keydown', handleKeyPress);
+            }, [gameState, p1Move, p2Move, currentTurn, gameMode, player1.blockCount, player2.blockCount, isHost]);
 
             useEffect(() => {
                 return () => {
-                    if (socket) {
-                        socket.disconnect();
-                        socket = null;
-                    }
+                    cleanupSocket();
                 };
             }, []);
 
-            // ============================================================
-            // MENU SCREEN
-            // ============================================================
+            const getMoveIcon = (move) => {
+                switch (move) {
+                    case MOVES.ATTACK: return <Swords className="w-6 h-6" />;
+                    case MOVES.DEFEND: return <Shield className="w-6 h-6" />;
+                    case MOVES.CHARGE: return <Zap className="w-6 h-6" />;
+                    default: return null;
+                }
+            };
 
-            if (screen === 'menu') {
+            const getMoveColor = (move) => {
+                switch (move) {
+                    case MOVES.ATTACK: return 'bg-red-500';
+                    case MOVES.DEFEND: return 'bg-blue-500';
+                    case MOVES.CHARGE: return 'bg-yellow-500';
+                    default: return 'bg-gray-500';
+                }
+            };
+
+            if (gameState === 'menu') {
                 return (
-                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
-                        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-cyan-500/30">
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+                        <div className="max-w-2xl w-full bg-slate-800 rounded-2xl shadow-2xl p-8 border border-purple-500/30">
                             <div className="text-center mb-8">
-                                <h1 className="text-5xl font-black tracking-tight mb-2">
-                                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">NAVAL</span>
-                                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-400 ml-3">CLASH</span>
+                                <h1 className="text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600 mb-4">
+                                    COMBAT TACTICS
                                 </h1>
-                                <p className="text-slate-400 text-sm tracking-widest uppercase">Real-Time Naval Combat</p>
-                                <div className="mt-3 flex justify-center gap-1">
-                                    {['\u26F5','\uD83D\uDEA2','\u2693','\uD83D\uDE80','\u2708\uFE0F'].map((e, i) => (
-                                        <span key={i} className="text-lg opacity-50">{e}</span>
-                                    ))}
-                                </div>
+                                <p className="text-slate-300 text-lg">Strategic turn-based dueling</p>
                             </div>
 
-                            {error && (
-                                <div className="bg-red-900/50 border border-red-500/50 rounded-lg p-3 mb-4 text-red-200 text-sm text-center">
-                                    {error}
+                            <div className="space-y-4 mb-8">
+                                {connectionError && (
+                                    <div className="bg-red-900/50 border-2 border-red-500 rounded-xl p-4 text-red-200">
+                                        <p className="font-bold mb-2">� Connection Error</p>
+                                        <p className="text-sm">{connectionError}</p>
+                                    </div>
+                                )}
+
+                                <div className="bg-slate-700 rounded-xl p-4">
+                                    <h3 className="text-white font-bold mb-3 text-center">vs Computer</h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => startNewMatch('cpu', 1)}
+                                            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-4 rounded-lg transition-all"
+                                        >
+                                            Single Match
+                                        </button>
+                                        <button
+                                            onClick={() => startNewMatch('cpu', 3)}
+                                            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-4 rounded-lg transition-all"
+                                        >
+                                            Best of 3
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-700 rounded-xl p-4">
+                                    <h3 className="text-white font-bold mb-3 text-center">vs Friend (Local)</h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => startNewMatch('local', 1)}
+                                            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-all"
+                                        >
+                                            Single Match
+                                        </button>
+                                        <button
+                                            onClick={() => startNewMatch('local', 3)}
+                                            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-all"
+                                        >
+                                            Best of 3
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-2 text-center">Hidden move selection</p>
+                                </div>
+
+                                <div className="bg-slate-700 rounded-xl p-4">
+                                    <h3 className="text-white font-bold mb-3 text-center">vs Friend (Online)</h3>
+
+                                    <div className="mb-3 text-center">
+                                        <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                                            connected ? 'bg-green-900/50 text-green-300' : 'bg-slate-600 text-slate-300'
+                                        }`}>
+                                            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-slate-400'}`}></span>
+                                            {connected ? 'Server Connected' : 'Not Connected'}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        <button
+                                            onClick={() => createLobby(1)}
+                                            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold py-3 px-4 rounded-lg transition-all"
+                                        >
+                                            Create Lobby
+                                        </button>
+                                        <button
+                                            onClick={() => setGameState('join')}
+                                            className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white font-bold py-3 px-4 rounded-lg transition-all"
+                                        >
+                                            Join Lobby
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-slate-400 text-center mb-2">Requires backend server</p>
+
+                                    {!connected && (
+                                        <button
+                                            onClick={() => initSocket()}
+                                            className="w-full bg-slate-600 hover:bg-slate-500 text-white text-sm py-2 rounded-lg transition-all"
+                                        >
+                                            Test Connection
+                                        </button>
+                                    )}
+                                </div>
+
+                                <button
+                                    onClick={() => setShowTutorial(!showTutorial)}
+                                    className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-4 px-8 rounded-xl transition-all"
+                                >
+                                    {showTutorial ? 'Hide Tutorial' : 'How to Play'}
+                                </button>
+                            </div>
+
+                            {showTutorial && (
+                                <div className="bg-slate-700 rounded-xl p-6 space-y-4">
+                                    <h3 className="text-xl font-bold text-white mb-4">Game Rules</h3>
+
+                                    <div className="space-y-3 text-slate-200">
+                                        <div className="flex items-start gap-3">
+                                            <Swords className="w-5 h-5 text-red-400 mt-1 flex-shrink-0" />
+                                            <div>
+                                                <strong>Attack:</strong> Deal your ATK damage to opponent. Resets your ATK to 1.
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start gap-3">
+                                            <Shield className="w-5 h-5 text-blue-400 mt-1 flex-shrink-0" />
+                                            <div>
+                                                <strong>Defend:</strong> Block an incoming attack. Can only defend 2 times in a row.
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-start gap-3">
+                                            <Zap className="w-5 h-5 text-yellow-400 mt-1 flex-shrink-0" />
+                                            <div>
+                                                <strong>Charge:</strong> Increase your ATK by 1. Vulnerable to attacks.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-slate-600 pt-4 mt-4">
+                                        <h4 className="font-bold text-white mb-2">Advanced Tactics:</h4>
+                                        <ul className="space-y-2 text-sm text-slate-300">
+                                            <li>" When both attack, higher ATK deals the difference as damage</li>
+                                            <li>" Defending 3+ times in a row breaks your defense</li>
+                                            <li>" Time your charges to build up lethal damage</li>
+                                            <li>" First to 0 HP loses</li>
+                                        </ul>
+                                    </div>
+
+                                    <div className="border-t border-slate-600 pt-4 mt-4">
+                                        <h4 className="font-bold text-white mb-2">Keyboard Controls:</h4>
+                                        <div className="grid grid-cols-2 gap-4 text-sm text-slate-300">
+                                            <div>
+                                                <p className="font-semibold text-purple-400">Player 1:</p>
+                                                <ul className="space-y-1 mt-1">
+                                                    <li>" W - Attack</li>
+                                                    <li>" A - Defend</li>
+                                                    <li>" D - Charge</li>
+                                                </ul>
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-cyan-400">Player 2 (Local):</p>
+                                                <ul className="space-y-1 mt-1">
+                                                    <li>" � - Attack</li>
+                                                    <li>" � - Defend</li>
+                                                    <li>" � - Charge</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (gameState === 'join') {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl p-8 border border-purple-500/30">
+                            <h2 className="text-3xl font-bold text-white mb-6 text-center">Join Lobby</h2>
+
+                            {connectionError && (
+                                <div className="bg-red-900/50 border border-red-500 rounded-lg p-3 mb-4 text-red-200">
+                                    {connectionError}
                                 </div>
                             )}
 
                             <div className="mb-6">
-                                <label className="block text-slate-300 mb-2 font-semibold text-sm uppercase tracking-wide">Commander Name</label>
-                                <input
-                                    type="text"
-                                    value={playerName}
-                                    onChange={(e) => setPlayerName(e.target.value)}
-                                    placeholder="Enter your name"
-                                    className="w-full bg-slate-700/80 text-white rounded-lg p-3 border border-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 transition-all"
-                                    onKeyDown={(e) => e.key === 'Enter' && createLobby()}
-                                />
-                            </div>
-
-                            <div className="space-y-3">
-                                <button
-                                    onClick={createLobby}
-                                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-lg transition-all shadow-lg shadow-cyan-900/30 active:scale-[0.98]"
-                                >
-                                    Create New Battle
-                                </button>
-
-                                <div className="relative my-4">
-                                    <div className="absolute inset-0 flex items-center">
-                                        <div className="w-full border-t border-slate-600/50"></div>
-                                    </div>
-                                    <div className="relative flex justify-center">
-                                        <span className="px-3 bg-slate-800/90 text-slate-500 text-xs uppercase tracking-widest">or join</span>
-                                    </div>
-                                </div>
-
+                                <label className="block text-slate-300 mb-2 font-semibold">Lobby Code</label>
                                 <input
                                     type="text"
                                     value={joinCode}
                                     onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                                    placeholder="ABCD"
+                                    placeholder="Enter 4-letter code"
                                     maxLength={4}
-                                    className="w-full bg-slate-700/80 text-white text-center text-2xl tracking-[0.3em] rounded-lg p-3 border border-slate-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50 uppercase transition-all font-mono"
-                                    onKeyDown={(e) => e.key === 'Enter' && joinCode.length === 4 && joinLobby()}
+                                    className="w-full bg-slate-700 text-white text-2xl text-center tracking-widest rounded-lg p-4 border-2 border-slate-600 focus:border-cyan-500 focus:outline-none uppercase"
                                 />
-
-                                <button
-                                    onClick={joinLobby}
-                                    disabled={joinCode.length !== 4}
-                                    className={`w-full ${
-                                        joinCode.length === 4
-                                            ? 'bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 shadow-lg shadow-indigo-900/30'
-                                            : 'bg-slate-700 cursor-not-allowed opacity-50'
-                                    } text-white font-bold py-4 rounded-lg transition-all active:scale-[0.98]`}
-                                >
-                                    Join Battle
-                                </button>
                             </div>
 
                             <button
-                                onClick={() => setShowTutorial(!showTutorial)}
-                                className="w-full mt-4 bg-slate-700/60 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-lg transition-all text-sm"
+                                onClick={joinLobby}
+                                disabled={joinCode.length !== 4}
+                                className={`w-full ${
+                                    joinCode.length === 4
+                                        ? 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700'
+                                        : 'bg-slate-600 cursor-not-allowed'
+                                } text-white font-bold py-4 px-8 rounded-xl transition-all mb-3`}
                             >
-                                {showTutorial ? 'Close' : 'How to Play'}
+                                Join Game
                             </button>
 
-                            {showTutorial && (
-                                <div className="mt-4 bg-slate-700/60 rounded-lg p-5 space-y-3 text-sm">
-                                    <h3 className="text-white font-bold text-base">How to Play</h3>
-                                    <div>
-                                        <h4 className="text-cyan-400 font-semibold">Objective</h4>
-                                        <p className="text-slate-300">Destroy your opponent's harbor (20 HP) using naval units deployed in real-time.</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-cyan-400 font-semibold">Resources</h4>
-                                        <p className="text-slate-300">You gain 1 resource per second (max 20). Spend resources to deploy units from your hand.</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-cyan-400 font-semibold">Lanes</h4>
-                                        <p className="text-slate-300">3 ocean lanes. Deploy units to any lane. Most units are lane-locked; some can switch lanes.</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-cyan-400 font-semibold">Cards</h4>
-                                        <p className="text-slate-300">Pick 8 units before the match. You see 4 cards at a time. Playing a card draws a new one.</p>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-cyan-400 font-semibold">Combat</h4>
-                                        <p className="text-slate-300">Units auto-march and fight. Some target the base, others hunt enemy units. Strategy is in deployment timing and lane choice.</p>
-                                    </div>
-                                </div>
-                            )}
+                            <button
+                                onClick={() => {
+                                    setGameState('menu');
+                                    setConnectionError('');
+                                    setJoinCode('');
+                                }}
+                                className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all"
+                            >
+                                Back
+                            </button>
                         </div>
                     </div>
                 );
             }
 
-            // ============================================================
-            // LOBBY SCREEN
-            // ============================================================
-
-            if (screen === 'lobby') {
+            if (gameState === 'lobby') {
                 return (
-                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
-                        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-cyan-500/30 text-center">
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl p-8 border border-purple-500/30 text-center">
                             {waitingForOpponent ? (
                                 <>
-                                    <h2 className="text-2xl font-bold text-white mb-2">Waiting for Opponent</h2>
-                                    <p className="text-slate-400 mb-6 text-sm">Share this code with your opponent</p>
-                                    <div className="bg-slate-900/80 rounded-xl px-6 py-5 mb-6 border border-slate-700">
-                                        <span className="text-5xl font-black text-cyan-400 tracking-[0.4em] font-mono">{lobbyCode}</span>
-                                    </div>
-                                    <div className="flex justify-center gap-1.5">
-                                        {[0,1,2].map(i => (
-                                            <div key={i} className="w-2.5 h-2.5 bg-cyan-500 rounded-full animate-pulse" style={{ animationDelay: `${i * 0.2}s` }}></div>
-                                        ))}
-                                    </div>
-                                    <button onClick={goToMenu} className="mt-6 text-slate-500 hover:text-slate-300 text-sm transition-colors">Cancel</button>
-                                </>
-                            ) : (
-                                <>
-                                    <h2 className="text-2xl font-bold text-white mb-2">Opponent Found!</h2>
-                                    <p className="text-xl text-cyan-400 font-semibold">{opponentName}</p>
-                                    <p className="text-slate-400 mt-3 text-sm">Entering deck selection...</p>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                );
-            }
+                                    <h2 className="text-3xl font-bold text-white mb-6">Waiting for Opponent...</h2>
 
-            // ============================================================
-            // DECK SELECTION SCREEN
-            // ============================================================
-
-            if (screen === 'deckSelection') {
-                const unitEntries = Object.entries(availableUnits);
-
-                return (
-                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
-                        <div className="max-w-4xl w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-6 border border-cyan-500/30">
-                            {countdown !== null ? (
-                                <div className="text-center py-20">
-                                    <p className="text-slate-400 text-lg mb-4">Battle begins in</p>
-                                    <span className="text-8xl font-black text-cyan-400">{countdown}</span>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="text-center mb-6">
-                                        <h2 className="text-2xl font-bold text-white">Choose Your Fleet</h2>
-                                        <p className="text-slate-400 text-sm mt-1">Select 8 of 10 units for your deck</p>
-                                        <div className="mt-2 flex justify-center items-center gap-3">
-                                            <span className={`text-lg font-bold ${selectedDeck.length === 8 ? 'text-green-400' : 'text-cyan-400'}`}>
-                                                {selectedDeck.length}/8
-                                            </span>
-                                            <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
-                                                <div
-                                                    className={`h-full rounded-full transition-all duration-300 ${selectedDeck.length === 8 ? 'bg-green-500' : 'bg-cyan-500'}`}
-                                                    style={{ width: `${(selectedDeck.length / 8) * 100}%` }}
-                                                ></div>
+                                    <div className="bg-slate-700 rounded-xl p-6 mb-6">
+                                        <p className="text-slate-300 mb-3">Share this code:</p>
+                                        <div className="flex items-center justify-center gap-3">
+                                            <div className="bg-slate-900 rounded-lg px-6 py-4">
+                                                <span className="text-4xl font-bold text-green-400 tracking-widest">{lobbyCode}</span>
                                             </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-5 gap-3 mb-6">
-                                        {unitEntries.map(([key, def]) => {
-                                            const isSelected = selectedDeck.includes(key);
-                                            const cat = UNIT_CATEGORIES[key] || 'offense';
-                                            const catColor = CATEGORY_COLORS[cat];
-                                            const unitVis = UNIT_ICONS[key];
-
-                                            return (
-                                                <div
-                                                    key={key}
-                                                    onClick={() => toggleDeckUnit(key)}
-                                                    className={`deck-card relative rounded-xl p-3 cursor-pointer border-2 transition-all ${
-                                                        isSelected
-                                                            ? 'border-cyan-400 bg-gradient-to-b from-cyan-900/40 to-slate-800/80 shadow-lg shadow-cyan-900/30'
-                                                            : `border-slate-600/50 bg-gradient-to-b ${catColor.bg} hover:border-slate-500`
-                                                    }`}
-                                                >
-                                                    {/* Category stripe */}
-                                                    <div className={`absolute top-0 left-0 right-0 h-1 rounded-t-xl ${catColor.stripe}`}></div>
-
-                                                    {isSelected && (
-                                                        <div className="absolute top-2 right-2 w-5 h-5 bg-cyan-500 rounded-full flex items-center justify-center">
-                                                            <span className="text-white text-xs font-bold">{'\u2713'}</span>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="text-center">
-                                                        <span className="text-3xl block mb-1">{unitVis.icon}</span>
-                                                        <span className="text-white font-bold text-xs block leading-tight">{def.name}</span>
-                                                        <div className="flex justify-center gap-2 mt-2 text-xs">
-                                                            <span className="text-yellow-400" title="Cost">{'\uD83D\uDC8E'}{def.cost}</span>
-                                                            {!def.isSpell && <span className="text-red-400" title="HP">{'\u2764\uFE0F'}{def.maxHp}</span>}
-                                                            {def.damage > 0 && <span className="text-orange-400" title="Damage">{'\u2694\uFE0F'}{def.damage}</span>}
-                                                        </div>
-                                                        <p className="text-slate-400 text-[10px] mt-1.5 leading-tight">{def.description}</p>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            {deckReady && <span className="text-green-400 text-sm font-semibold">You're ready!</span>}
-                                            {opponentDeckReady && <span className="text-cyan-400 text-sm">Opponent is ready</span>}
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <button onClick={goToMenu} className="px-4 py-2 text-slate-400 hover:text-white text-sm transition-colors">
-                                                Leave
-                                            </button>
                                             <button
-                                                onClick={confirmDeck}
-                                                disabled={selectedDeck.length !== 8 || deckReady}
-                                                className={`px-8 py-3 rounded-lg font-bold transition-all ${
-                                                    selectedDeck.length === 8 && !deckReady
-                                                        ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white shadow-lg shadow-green-900/30 active:scale-[0.98]'
-                                                        : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                                                }`}
+                                                onClick={copyLobbyCode}
+                                                className="bg-slate-600 hover:bg-slate-500 p-3 rounded-lg transition-all"
+                                                title="Copy code"
                                             >
-                                                {deckReady ? 'Waiting...' : 'Ready!'}
+                                                {copySuccess ? (
+                                                    <Check className="w-6 h-6 text-green-400" />
+                                                ) : (
+                                                    <Copy className="w-6 h-6 text-slate-300" />
+                                                )}
                                             </button>
                                         </div>
                                     </div>
+
+                                    <div className="mb-6">
+                                        <div className="animate-pulse flex justify-center mb-3">
+                                            <div className="w-3 h-3 bg-green-500 rounded-full mx-1"></div>
+                                            <div className="w-3 h-3 bg-green-500 rounded-full mx-1"></div>
+                                            <div className="w-3 h-3 bg-green-500 rounded-full mx-1"></div>
+                                        </div>
+                                        <p className="text-slate-400">Waiting for someone to join...</p>
+                                    </div>
+
+                                    <button
+                                        onClick={() => {
+                                            cleanupSocket();
+                                            setGameState('menu');
+                                        }}
+                                        className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all"
+                                    >
+                                        Cancel
+                                    </button>
                                 </>
+                            ) : (
+                                <>
+                                    <h2 className="text-3xl font-bold text-white mb-4">Opponent Found!</h2>
+                                    <p className="text-xl text-green-400 mb-6">Connected to {opponentName}</p>
+                                    <p className="text-slate-400">Starting game...</p>
+                                </>
+                            )}
+
+                            {connectionError && (
+                                <div className="mt-4 bg-red-900/50 border border-red-500 rounded-lg p-3 text-red-200">
+                                    {connectionError}
+                                </div>
                             )}
                         </div>
                     </div>
                 );
             }
 
-            // ============================================================
-            // GAME SCREEN
-            // ============================================================
-
-            if (screen === 'playing') {
-                const isP1 = playerRole === 'player1';
-
-                // Transform unit positions for display (P2 sees mirrored)
-                const displayUnits = units.map(u => ({
-                    ...u,
-                    displayCol: isP1 ? u.col : (19 - u.col),
-                    isOwn: u.owner === playerRole,
-                    isFriendly: u.owner === playerRole
-                }));
-
-                const myHarborHp = harborHp;
-                const theirHarborHp = enemyHarborHp;
-
-                const hpBarColor = (hp, max) => {
-                    const pct = hp / max;
-                    if (pct > 0.6) return 'bg-green-500';
-                    if (pct > 0.3) return 'bg-yellow-500';
-                    return 'bg-red-500';
-                };
-
+            if (gameState === 'roundOver') {
                 return (
-                    <div className="min-h-screen ocean-bg flex flex-col">
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-700/50">
-                            {/* My Harbor */}
-                            <div className={`flex items-center gap-3 ${harborShaking.left ? 'animate-harborShake' : ''}`}>
-                                <div className="text-left">
-                                    <span className="text-slate-400 text-xs uppercase tracking-wide block">Your Harbor</span>
-                                    <span className="text-white font-black text-xl">{myHarborHp}</span>
-                                    <span className="text-slate-500 text-sm">/20</span>
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl p-8 border border-purple-500/30 text-center">
+                            <h2 className="text-3xl font-bold text-white mb-4">Round Over!</h2>
+                            <p className="text-2xl text-slate-300 mb-6">{winner.name} wins the round!</p>
+
+                            <div className="bg-slate-700 rounded-xl p-4 mb-6">
+                                <h3 className="text-white font-bold mb-2">Match Score</h3>
+                                <div className="flex justify-center gap-8 text-3xl font-bold">
+                                    <div className="text-purple-400">{matchScore.p1}</div>
+                                    <div className="text-slate-500">-</div>
+                                    <div className="text-cyan-400">{matchScore.p2}</div>
                                 </div>
-                                <div className="w-28 h-3 bg-slate-700 rounded-full overflow-hidden">
-                                    <div className={`h-full rounded-full hp-bar-fill ${hpBarColor(myHarborHp, 20)}`}
-                                        style={{ width: `${(myHarborHp / 20) * 100}%` }}></div>
-                                </div>
+                                <p className="text-slate-400 text-sm mt-2">First to {Math.ceil(bestOf / 2)} wins</p>
                             </div>
 
-                            {/* Resources */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-2xl">{'\uD83D\uDC8E'}</span>
-                                <span className={`text-yellow-400 font-black text-2xl ${resourcePulsing ? 'animate-resourcePulse' : ''}`}>
-                                    {resources}
-                                </span>
-                                <span className="text-slate-500 text-sm">/{MAX_RESOURCES || 20}</span>
-                            </div>
+                            <button
+                                onClick={() => startGame(gameMode)}
+                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-8 rounded-xl transition-all transform hover:scale-105 shadow-lg"
+                            >
+                                Next Round
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
 
-                            {/* Enemy Harbor */}
-                            <div className={`flex items-center gap-3 ${harborShaking.right ? 'animate-harborShake' : ''}`}>
-                                <div className="w-28 h-3 bg-slate-700 rounded-full overflow-hidden">
-                                    <div className={`h-full rounded-full hp-bar-fill ${hpBarColor(theirHarborHp, 20)}`}
-                                        style={{ width: `${(theirHarborHp / 20) * 100}%` }}></div>
+            if (gameState === 'matchOver') {
+                const matchWinner = matchScore.p1 > matchScore.p2 ? player1 : player2;
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+                        <div className="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl p-8 border border-purple-500/30 text-center">
+                            <Trophy className="w-24 h-24 mx-auto mb-6 text-yellow-400" />
+                            <h2 className="text-4xl font-bold text-white mb-4">
+                                {matchWinner.id === 1 ? 'Victory!' : gameMode === 'local' ? 'Player 2 Wins!' : 'Defeat'}
+                            </h2>
+                            <p className="text-2xl text-slate-300 mb-6">{matchWinner.name} wins the match!</p>
+
+                            {bestOf > 1 && (
+                                <div className="bg-slate-700 rounded-xl p-4 mb-6">
+                                    <h3 className="text-white font-bold mb-2">Final Score</h3>
+                                    <div className="flex justify-center gap-8 text-4xl font-bold">
+                                        <div className="text-purple-400">{matchScore.p1}</div>
+                                        <div className="text-slate-500">-</div>
+                                        <div className="text-cyan-400">{matchScore.p2}</div>
+                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-slate-400 text-xs uppercase tracking-wide block">Enemy Harbor</span>
-                                    <span className="text-white font-black text-xl">{theirHarborHp}</span>
-                                    <span className="text-slate-500 text-sm">/20</span>
-                                </div>
-                            </div>
+                            )}
+
+                            <button
+                                onClick={() => startNewMatch(gameMode, bestOf)}
+                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-8 rounded-xl transition-all transform hover:scale-105 shadow-lg mb-3"
+                            >
+                                Rematch
+                            </button>
+                            <button
+                                onClick={() => setGameState('menu')}
+                                className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 px-8 rounded-xl transition-all"
+                            >
+                                Main Menu
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Playing screen
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+                    <div className="max-w-6xl mx-auto">
+                        <div className="text-center mb-8">
+                            <h1 className="text-4xl font-bold text-white mb-2">Combat Tactics</h1>
+                            {result && (
+                                <p className="text-xl text-purple-300 font-semibold animate-pulse">
+                                    {result.message}
+                                </p>
+                            )}
                         </div>
 
-                        {error && (
-                            <div className="mx-4 mt-2 bg-red-900/50 border border-red-500/50 rounded-lg p-2 text-red-200 text-sm text-center">
-                                {error}
-                            </div>
-                        )}
+                        <div className="grid grid-cols-2 gap-8 mb-8">
+                            {/* Player 1 Card */}
+                            <div className="relative">
+                                <div className={`bg-slate-800 rounded-2xl p-6 border-4 transition-all ${
+                                    p1Move && (gameMode === 'cpu' || (gameMode === 'local' && p2Move) || (gameMode === 'online' && p2Move))
+                                        ? `${getBorderColor(p1Move)} shadow-lg ${getShadowColor(p1Move)}`
+                                        : 'border-purple-500/30'
+                                }`}>
+                                    <h2 className="text-2xl font-bold text-white mb-4">{player1.name}</h2>
 
-                        {/* Battle Grid */}
-                        <div className="flex-1 flex flex-col justify-center px-4 py-3">
-                            <div className="relative w-full max-w-5xl mx-auto">
-                                {/* Lanes */}
-                                {[0, 1, 2].map(lane => (
-                                    <React.Fragment key={lane}>
-                                        <div
-                                            className={`relative h-[80px] mb-0 wave-lines lane-bg rounded-lg border border-slate-700/30 ${
-                                                selectedCard !== null ? 'lane-highlight lane-deploy-active cursor-pointer' : ''
-                                            }`}
-                                            onClick={() => selectedCard !== null && deployUnit(lane)}
-                                        >
-                                            {/* Lane label */}
-                                            <div className="absolute left-2 top-1 text-[10px] text-slate-500 uppercase tracking-wider font-semibold z-10">
-                                                Lane {lane + 1}
-                                            </div>
-
-                                            {/* Harbor zones */}
-                                            <div className={`harbor-structure absolute left-0 top-0 bottom-0 w-[5%] rounded-l-lg flex items-center justify-center overflow-hidden ${
-                                                harborShaking.left ? 'animate-harborShake' : ''
-                                            }`}>
-                                                <span className="text-xl">{'\uD83C\uDFE0'}</span>
-                                                {harborFiring.left && (
-                                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-yellow-400 rounded-full animate-burst pointer-events-none" style={{zIndex:30}}></div>
-                                                )}
-                                            </div>
-                                            <div className={`harbor-structure absolute right-0 top-0 bottom-0 w-[5%] rounded-r-lg flex items-center justify-center overflow-hidden ${
-                                                harborShaking.right ? 'animate-harborShake' : ''
-                                            }`}>
-                                                <span className="text-xl">{'\uD83C\uDFE0'}</span>
-                                                {harborFiring.right && (
-                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-yellow-400 rounded-full animate-burst pointer-events-none" style={{zIndex:30}}></div>
-                                                )}
-                                            </div>
-
-                                            {/* Deploy zone indicator */}
-                                            {selectedCard !== null && (
-                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                                    <span className="text-cyan-400/40 text-sm font-bold uppercase tracking-widest">Click to Deploy</span>
-                                                </div>
-                                            )}
-
-                                            {/* Units in this lane */}
-                                            {displayUnits.filter(u => u.lane === lane).map(u => {
-                                                const leftPct = (u.displayCol / 19) * 90 + 5; // 5% to 95% (within harbors)
-                                                const unitVis = UNIT_ICONS[u.type] || { icon: '?', color: '#fff' };
-                                                const hpPct = (u.hp / u.maxHp) * 100;
-
-                                                return (
-                                                    <div
-                                                        key={u.id}
-                                                        className={`unit-sprite absolute flex flex-col items-center ${
-                                                            u.state === 'marching' ? 'animate-march' : ''
-                                                        }`}
-                                                        style={{
-                                                            left: `${leftPct}%`,
-                                                            top: '50%',
-                                                            transform: 'translate(-50%, -50%)',
-                                                            zIndex: 10
-                                                        }}
+                                    <div className="space-y-3 mb-4">
+                                        <div className="bg-slate-700 rounded-lg p-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-slate-300 flex items-center gap-2">
+                                                    <Heart className="w-5 h-5 text-red-400" />
+                                                    HP
+                                                </span>
+                                                <span className="text-2xl font-bold text-white">
+                                                    <span
+                                                        style={(player1.hp === 1 || p1DamagedRecently) ? { animation: 'healthPulse 1.5s ease-in-out infinite' } : {}}
                                                     >
-                                                        {/* HP Bar */}
-                                                        <div className="w-8 h-1 bg-slate-700/80 rounded-full overflow-hidden mb-0.5">
-                                                            <div
-                                                                className={`h-full rounded-full hp-bar-fill ${
-                                                                    hpPct > 60 ? 'bg-green-400' : hpPct > 30 ? 'bg-yellow-400' : 'bg-red-400'
-                                                                }`}
-                                                                style={{ width: `${hpPct}%` }}
-                                                            ></div>
-                                                        </div>
-                                                        {/* Unit icon */}
-                                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg ${
-                                                            u.isFriendly
-                                                                ? 'bg-blue-900/80 border-2 border-blue-400/60'
-                                                                : 'bg-red-900/80 border-2 border-red-400/60'
-                                                        } ${u.state === 'fighting' ? 'animate-damageFlash' : ''}`}
-                                                         style={{ filter: u.isFriendly ? 'none' : 'hue-rotate(0deg)' }}
-                                                        >
-                                                            <span style={{ transform: u.isFriendly ? 'scaleX(1)' : 'scaleX(-1)' }}>
-                                                                {unitVis.icon}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-
-                                            {/* Explosions */}
-                                            {explosions.filter(e => e.lane === lane).map(e => {
-                                                const leftPct = (isP1 ? e.col / 19 : (19 - e.col) / 19) * 90 + 5;
-                                                return (
-                                                    <div
-                                                        key={e.id}
-                                                        className="absolute animate-burst"
-                                                        style={{
-                                                            left: `${leftPct}%`,
-                                                            top: '50%',
-                                                            transform: 'translate(-50%, -50%)',
-                                                            zIndex: 20
-                                                        }}
-                                                    >
-                                                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-orange-500 to-red-500 opacity-80"></div>
-                                                    </div>
-                                                );
-                                            })}
-
-                                            {/* Floating texts */}
-                                            {floatingTexts.filter(f => f.lane === lane).map(f => {
-                                                const leftPct = (isP1 ? f.col / 19 : (19 - f.col) / 19) * 90 + 5;
-                                                return (
-                                                    <div
-                                                        key={f.id}
-                                                        className="absolute animate-floatUp font-black text-sm pointer-events-none"
-                                                        style={{
-                                                            left: `${leftPct}%`,
-                                                            top: '20%',
-                                                            color: f.color,
-                                                            zIndex: 25,
-                                                            textShadow: '0 0 4px rgba(0,0,0,0.8)'
-                                                        }}
-                                                    >
-                                                        {f.text}
-                                                    </div>
-                                                );
-                                            })}
+                                                        {player1.hp}
+                                                    </span>
+                                                    /{player1.maxHP}
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-slate-900 rounded-full h-2">
+                                                <div
+                                                    className="bg-gradient-to-r from-red-500 to-pink-500 h-2 rounded-full transition-all duration-500"
+                                                    style={{ width: `${(player1.hp / player1.maxHP) * 100}%` }}
+                                                />
+                                            </div>
                                         </div>
 
-                                        {/* Island chain between lanes */}
-                                        {lane < 2 && (
-                                            <div className="h-[12px] flex">
-                                                {Array.from({ length: 20 }).map((_, col) => {
-                                                    const isGap = [5, 10, 15].includes(col);
-                                                    return (
-                                                        <div
-                                                            key={col}
-                                                            className={`flex-1 ${isGap ? 'island-gap' : 'island-strip'}`}
-                                                        >
-                                                            {isGap && (
-                                                                <div className="h-full flex items-center justify-center">
-                                                                    <div className="w-1.5 h-1.5 bg-cyan-500/30 rounded-full"></div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
+                                        <div className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                                            <span className="text-slate-300">ATK</span>
+                                            <span className="text-2xl font-bold text-yellow-400">{player1.atk}</span>
+                                        </div>
+
+                                        <div className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                                            <span className="text-slate-300">Shield</span>
+                                            <span className="text-lg font-bold text-blue-400">{player1.blockCount}/2</span>
+                                        </div>
+                                    </div>
+
+                                    {p1Move && (gameMode === 'cpu' || (gameMode === 'local' && p2Move) || (gameMode === 'online' && p2Move)) && (
+                                        <div className={`${getMoveColor(p1Move)} rounded-lg p-4 flex items-center justify-center text-white font-bold`}>
+                                            {getMoveIcon(p1Move)}
+                                            <span className="ml-2 uppercase">{p1Move}</span>
+                                        </div>
+                                    )}
+
+                                    {gameMode === 'local' && p1Move && !p2Move && (
+                                        <div className="bg-slate-700 rounded-lg p-4 text-center text-green-400 font-bold">
+                                             Move Locked In
+                                        </div>
+                                    )}
+
+                                    {gameMode === 'online' && p1Move && !p2Move && isHost && (
+                                        <div className="bg-slate-700 rounded-lg p-4 text-center text-green-400 font-bold">
+                                             Move Locked In
+                                        </div>
+                                    )}
+                                </div>
+
+                                {damageAnimations.filter(a => a.player === 1).map(anim => (
+                                    <div
+                                        key={anim.id}
+                                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{ animation: 'damageFloat 1.5s ease-out forwards' }}
+                                    >
+                                        <div className="text-7xl font-black text-red-500"
+                                             style={{ textShadow: '0 0 20px rgba(239, 68, 68, 0.8)' }}>
+                                            -{anim.damage}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {effectAnimations.filter(e => e.player === 1).map(effect => (
+                                    <div
+                                        key={effect.id}
+                                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{ animation: 'damageFloat 1.5s ease-out forwards' }}
+                                    >
+                                        {effect.type === 'blocked' && (
+                                            <div className="flex items-center gap-2 bg-blue-500 px-6 py-3 rounded-full text-white font-bold text-2xl shadow-lg">
+                                                <Shield className="w-8 h-8" />
+                                                BLOCKED!
                                             </div>
                                         )}
-                                    </React.Fragment>
+                                        {effect.type === 'charged' && (
+                                            <div className="flex items-center gap-2 bg-yellow-500 px-6 py-3 rounded-full text-white font-bold text-2xl shadow-lg">
+                                                <Zap className="w-8 h-8" />
+                                                +1 ATK!
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Player 2 Card */}
+                            <div className="relative">
+                                <div className={`bg-slate-800 rounded-2xl p-6 border-4 transition-all ${
+                                    p2Move && (gameMode === 'cpu' || (gameMode === 'local' && p1Move) || (gameMode === 'online' && p1Move))
+                                        ? `${getBorderColor(p2Move)} shadow-lg ${getShadowColor(p2Move)}`
+                                        : 'border-purple-500/30'
+                                }`}>
+                                    <h2 className="text-2xl font-bold text-white mb-4">
+                                        {gameMode === 'local' ? 'Player 2' : player2.name}
+                                    </h2>
+
+                                    <div className="space-y-3 mb-4">
+                                        <div className="bg-slate-700 rounded-lg p-3">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-slate-300 flex items-center gap-2">
+                                                    <Heart className="w-5 h-5 text-red-400" />
+                                                    HP
+                                                </span>
+                                                <span className="text-2xl font-bold text-white">
+                                                    <span
+                                                        style={(player2.hp === 1 || p2DamagedRecently) ? { animation: 'healthPulse 1.5s ease-in-out infinite' } : {}}
+                                                    >
+                                                        {player2.hp}
+                                                    </span>
+                                                    /{player2.maxHP}
+                                                </span>
+                                            </div>
+                                            <div className="w-full bg-slate-900 rounded-full h-2">
+                                                <div
+                                                    className="bg-gradient-to-r from-red-500 to-pink-500 h-2 rounded-full transition-all duration-500"
+                                                    style={{ width: `${(player2.hp / player2.maxHP) * 100}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                                            <span className="text-slate-300">ATK</span>
+                                            <span className="text-2xl font-bold text-yellow-400">{player2.atk}</span>
+                                        </div>
+
+                                        <div className="flex items-center justify-between bg-slate-700 rounded-lg p-3">
+                                            <span className="text-slate-300">Shield</span>
+                                            <span className="text-lg font-bold text-blue-400">{player2.blockCount}/2</span>
+                                        </div>
+                                    </div>
+
+                                    {p2Move && (gameMode === 'cpu' || (gameMode === 'local' && p1Move) || (gameMode === 'online' && p1Move)) ? (
+                                        <div className={`${getMoveColor(p2Move)} rounded-lg p-4 flex items-center justify-center text-white font-bold`}>
+                                            {getMoveIcon(p2Move)}
+                                            <span className="ml-2 uppercase">{p2Move}</span>
+                                        </div>
+                                    ) : p1Move && gameMode === 'cpu' ? (
+                                        <div className="bg-slate-700 rounded-lg p-4 text-center text-slate-400">
+                                            Thinking...
+                                        </div>
+                                    ) : gameMode === 'local' && p2Move && !p1Move ? (
+                                        <div className="bg-slate-700 rounded-lg p-4 text-center text-green-400 font-bold">
+                                             Move Locked In
+                                        </div>
+                                    ) : gameMode === 'online' && p2Move && !p1Move && !isHost ? (
+                                        <div className="bg-slate-700 rounded-lg p-4 text-center text-green-400 font-bold">
+                                             Move Locked In
+                                        </div>
+                                    ) : null}
+                                </div>
+
+                                {damageAnimations.filter(a => a.player === 2).map(anim => (
+                                    <div
+                                        key={anim.id}
+                                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{ animation: 'damageFloat 1.5s ease-out forwards' }}
+                                    >
+                                        <div className="text-7xl font-black text-red-500"
+                                             style={{ textShadow: '0 0 20px rgba(239, 68, 68, 0.8)' }}>
+                                            -{anim.damage}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {effectAnimations.filter(e => e.player === 2).map(effect => (
+                                    <div
+                                        key={effect.id}
+                                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{ animation: 'damageFloat 1.5s ease-out forwards' }}
+                                    >
+                                        {effect.type === 'blocked' && (
+                                            <div className="flex items-center gap-2 bg-blue-500 px-6 py-3 rounded-full text-white font-bold text-2xl shadow-lg">
+                                                <Shield className="w-8 h-8" />
+                                                BLOCKED!
+                                            </div>
+                                        )}
+                                        {effect.type === 'charged' && (
+                                            <div className="flex items-center gap-2 bg-yellow-500 px-6 py-3 rounded-full text-white font-bold text-2xl shadow-lg">
+                                                <Zap className="w-8 h-8" />
+                                                +1 ATK!
+                                            </div>
+                                        )}
+                                    </div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Card Hand + Log */}
-                        <div className="px-4 pb-3">
-                            <div className="max-w-5xl mx-auto flex gap-4">
-                                {/* Card Hand */}
-                                <div className="flex-1">
-                                    <div className="flex justify-center gap-3">
-                                        {hand.map((card, idx) => {
-                                            const def = UNIT_ICONS[card.unitType] || { icon: '?', color: '#fff' };
-                                            const cat = UNIT_CATEGORIES[card.unitType] || 'offense';
-                                            const catColor = CATEGORY_COLORS[cat];
-                                            const canAfford = resources >= card.cost;
-                                            const isSelected = selectedCard === idx;
+                        {/* Action Buttons */}
+                        {(gameMode === 'cpu' && !p1Move) && (
+                            <div>
+                                <p className="text-center text-slate-400 mb-3 text-sm">
+                                    Keyboard: W = Attack | A = Defend | D = Charge
+                                </p>
+                                <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
+                                    <button
+                                        onClick={() => makeMove(MOVES.ATTACK)}
+                                        className="bg-gradient-to-br from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2"
+                                    >
+                                        <Swords className="w-10 h-10" />
+                                        <span className="text-lg">ATTACK</span>
+                                    </button>
 
-                                            return (
-                                                <div
-                                                    key={`${card.unitType}_${idx}`}
-                                                    onClick={() => {
-                                                        if (!canAfford) return;
-                                                        setSelectedCard(isSelected ? null : idx);
-                                                    }}
-                                                    className={`card relative w-[100px] rounded-xl border-2 p-2.5 select-none
-                                                        ${newCardSlots.has(idx) ? 'animate-slideInRight' : ''}
-                                                        ${isSelected ? 'card-selected border-cyan-400 bg-gradient-to-b from-cyan-900/60 to-slate-800' :
-                                                          canAfford ? `${catColor.border} bg-gradient-to-b ${catColor.bg} hover:border-slate-400` :
-                                                          'card-disabled border-slate-700 bg-slate-800/60'}`}
-                                                >
-                                                    {/* Category stripe */}
-                                                    <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${catColor.stripe}`}></div>
+                                    <button
+                                        onClick={() => makeMove(MOVES.DEFEND)}
+                                        disabled={player1.blockCount >= 2}
+                                        className={`${
+                                            player1.blockCount >= 2
+                                                ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                                                : 'bg-gradient-to-br from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'
+                                        } text-white font-bold py-6 px-4 rounded-xl transition-all transform ${
+                                            player1.blockCount >= 2 ? '' : 'hover:scale-105'
+                                        } shadow-lg flex flex-col items-center gap-2`}
+                                    >
+                                        <Shield className="w-10 h-10" />
+                                        <span className="text-lg">DEFEND</span>
+                                    </button>
 
-                                                    <div className="text-center">
-                                                        <span className="text-2xl block">{def.icon}</span>
-                                                        <span className="text-white font-bold text-[10px] block mt-0.5 leading-tight">{card.name}</span>
-                                                        <div className="flex justify-center gap-1.5 mt-1.5">
-                                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                                                canAfford ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-500'
-                                                            }`}>
-                                                                {'\uD83D\uDC8E'}{card.cost}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-
-                                                    {isSelected && (
-                                                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full flex items-center justify-center shadow-lg">
-                                                            <span className="text-white text-[8px]">{'\u2191'}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    {selectedCard !== null && (
-                                        <p className="text-center text-cyan-400/70 text-xs mt-2 animate-pulse">
-                                            Click a lane to deploy {hand[selectedCard]?.name}
-                                        </p>
-                                    )}
-                                </div>
-
-                                {/* Game Log */}
-                                <div className="w-56 bg-slate-900/60 rounded-lg border border-slate-700/40 p-2">
-                                    <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">Battle Log</div>
-                                    <div ref={logRef} className="h-[90px] overflow-y-auto scrollbar-thin space-y-0.5">
-                                        {gameLog.map((entry, i) => (
-                                            <div key={i} className="text-[10px] leading-snug">
-                                                <span className="text-slate-600">{entry.time}</span>
-                                                <span className="text-slate-400 ml-1">{entry.message}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <button
+                                        onClick={() => makeMove(MOVES.CHARGE)}
+                                        className="bg-gradient-to-br from-yellow-500 to-yellow-700 hover:from-yellow-600 hover:to-yellow-800 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2"
+                                    >
+                                        <Zap className="w-10 h-10" />
+                                        <span className="text-lg">CHARGE</span>
+                                    </button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                );
-            }
+                        )}
 
-            // ============================================================
-            // GAME OVER SCREEN
-            // ============================================================
+                        {(gameMode === 'local' && currentTurn === 1 && !p1Move) && (
+                            <div>
+                                <p className="text-center text-purple-400 mb-3 font-semibold">
+                                    Player 1 - W/A/D
+                                </p>
+                                <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
+                                    <button onClick={() => makeMove(MOVES.ATTACK, 1)} className="bg-gradient-to-br from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2">
+                                        <Swords className="w-10 h-10" />
+                                        <span className="text-lg">ATTACK</span>
+                                    </button>
 
-            if (screen === 'gameOver') {
-                const didWin = winnerRole === playerRole;
-                const isDraw = winnerRole === 'draw';
+                                    <button onClick={() => makeMove(MOVES.DEFEND, 1)} disabled={player1.blockCount >= 2} className={`${player1.blockCount >= 2 ? 'bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gradient-to-br from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'} text-white font-bold py-6 px-4 rounded-xl transition-all transform ${player1.blockCount >= 2 ? '' : 'hover:scale-105'} shadow-lg flex flex-col items-center gap-2`}>
+                                        <Shield className="w-10 h-10" />
+                                        <span className="text-lg">DEFEND</span>
+                                    </button>
 
-                return (
-                    <div className="min-h-screen ocean-bg flex items-center justify-center p-4">
-                        <div className="max-w-md w-full bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 border border-cyan-500/30 text-center">
-                            <div className="text-6xl mb-4">
-                                {isDraw ? '\u2694\uFE0F' : didWin ? '\uD83C\uDFC6' : '\uD83D\uDCA5'}
-                            </div>
-                            <h2 className={`text-4xl font-black mb-2 ${
-                                isDraw ? 'text-yellow-400' : didWin ? 'text-green-400' : 'text-red-400'
-                            }`}>
-                                {isDraw ? 'DRAW!' : didWin ? 'VICTORY!' : 'DEFEAT'}
-                            </h2>
-                            <p className="text-slate-400 mb-6">
-                                {isDraw ? 'Both harbors destroyed!' : `${winner} wins!`}
-                            </p>
-
-                            {gameStats && (
-                                <div className="grid grid-cols-2 gap-4 mb-6">
-                                    <div className="bg-slate-700/50 rounded-lg p-3">
-                                        <span className="text-slate-400 text-xs block">Your Harbor</span>
-                                        <span className="text-white font-bold text-lg">{gameStats[playerRole]?.harborHp || 0} HP</span>
-                                    </div>
-                                    <div className="bg-slate-700/50 rounded-lg p-3">
-                                        <span className="text-slate-400 text-xs block">Enemy Harbor</span>
-                                        <span className="text-white font-bold text-lg">{gameStats[playerRole === 'player1' ? 'player2' : 'player1']?.harborHp || 0} HP</span>
-                                    </div>
+                                    <button onClick={() => makeMove(MOVES.CHARGE, 1)} className="bg-gradient-to-br from-yellow-500 to-yellow-700 hover:from-yellow-600 hover:to-yellow-800 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2">
+                                        <Zap className="w-10 h-10" />
+                                        <span className="text-lg">CHARGE</span>
+                                    </button>
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            <button
-                                onClick={goToMenu}
-                                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-lg transition-all shadow-lg active:scale-[0.98]"
-                            >
-                                Back to Menu
-                            </button>
-                        </div>
+                        {(gameMode === 'local' && currentTurn === 2 && !p2Move) && (
+                            <div>
+                                <p className="text-center text-cyan-400 mb-3 font-semibold">
+                                    Player 2 - Arrow Keys
+                                </p>
+                                <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
+                                    <button onClick={() => makeMove(MOVES.ATTACK, 2)} className="bg-gradient-to-br from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2">
+                                        <Swords className="w-10 h-10" />
+                                        <span className="text-lg">ATTACK</span>
+                                    </button>
+
+                                    <button onClick={() => makeMove(MOVES.DEFEND, 2)} disabled={player2.blockCount >= 2} className={`${player2.blockCount >= 2 ? 'bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gradient-to-br from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'} text-white font-bold py-6 px-4 rounded-xl transition-all transform ${player2.blockCount >= 2 ? '' : 'hover:scale-105'} shadow-lg flex flex-col items-center gap-2`}>
+                                        <Shield className="w-10 h-10" />
+                                        <span className="text-lg">DEFEND</span>
+                                    </button>
+
+                                    <button onClick={() => makeMove(MOVES.CHARGE, 2)} className="bg-gradient-to-br from-yellow-500 to-yellow-700 hover:from-yellow-600 hover:to-yellow-800 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2">
+                                        <Zap className="w-10 h-10" />
+                                        <span className="text-lg">CHARGE</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {(gameMode === 'online' && ((isHost && !p1Move) || (!isHost && !p2Move))) && (
+                            <div>
+                                <p className="text-center text-green-400 mb-3 font-semibold">Your Turn!</p>
+                                <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
+                                    <button onClick={() => makeMove(MOVES.ATTACK)} className="bg-gradient-to-br from-red-600 to-red-800 hover:from-red-700 hover:to-red-900 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2">
+                                        <Swords className="w-10 h-10" />
+                                        <span className="text-lg">ATTACK</span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => makeMove(MOVES.DEFEND)}
+                                        disabled={isHost ? player1.blockCount >= 2 : player2.blockCount >= 2}
+                                        className={`${
+                                            (isHost ? player1.blockCount >= 2 : player2.blockCount >= 2)
+                                                ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                                                : 'bg-gradient-to-br from-blue-600 to-blue-800 hover:from-blue-700 hover:to-blue-900'
+                                        } text-white font-bold py-6 px-4 rounded-xl transition-all transform ${
+                                            (isHost ? player1.blockCount >= 2 : player2.blockCount >= 2) ? '' : 'hover:scale-105'
+                                        } shadow-lg flex flex-col items-center gap-2`}
+                                    >
+                                        <Shield className="w-10 h-10" />
+                                        <span className="text-lg">DEFEND</span>
+                                    </button>
+
+                                    <button onClick={() => makeMove(MOVES.CHARGE)} className="bg-gradient-to-br from-yellow-500 to-yellow-700 hover:from-yellow-600 hover:to-yellow-800 text-white font-bold py-6 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex flex-col items-center gap-2">
+                                        <Zap className="w-10 h-10" />
+                                        <span className="text-lg">CHARGE</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {(gameMode === 'online' && ((isHost && p1Move && !p2Move) || (!isHost && p2Move && !p1Move))) && (
+                            <div className="text-center">
+                                <p className="text-slate-300 text-lg mb-3">Waiting for opponent...</p>
+                                <div className="animate-pulse flex justify-center">
+                                    <div className="w-3 h-3 bg-purple-500 rounded-full mx-1"></div>
+                                    <div className="w-3 h-3 bg-purple-500 rounded-full mx-1"></div>
+                                    <div className="w-3 h-3 bg-purple-500 rounded-full mx-1"></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(gameMode === 'local' && ((currentTurn === 1 && p1Move) || (currentTurn === 2 && p2Move))) && (
+                            <div className="text-center">
+                                <p className="text-slate-300 text-lg">Move locked in! Other player's turn...</p>
+                            </div>
+                        )}
                     </div>
-                );
-            }
-
-            return null;
+                </div>
+            );
         }
 
-        // ============================================================
-        // RENDER
-        // ============================================================
-
-        const MAX_RESOURCES = 20;
-        ReactDOM.createRoot(document.getElementById('root')).render(<NavalClashGame />);
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CombatGame />);
     </script>
 </body>
 </html>
