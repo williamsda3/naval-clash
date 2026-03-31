@@ -729,6 +729,47 @@ function castTorpedoBarrage(lobby, owner, lane, events) {
 }
 
 // ============================================================
+// HARBOR DEFENSE
+// ============================================================
+
+const HARBOR_ATTACK_COOLDOWN = 1500; // ms between shots
+const HARBOR_ATTACK_RANGE = 4;       // cols from harbor edge
+const HARBOR_DAMAGE = 2;
+
+function harborDefenseTick(lobby, role, now, events) {
+    const pd = lobby.players[role];
+    if (now - (pd.lastHarborAttack || 0) < HARBOR_ATTACK_COOLDOWN) return;
+
+    const harborCol = role === 'player1' ? GRID_CONFIG.p1HarborCol : GRID_CONFIG.p2HarborCol;
+    const enemyRole = getOpponentRole(role);
+
+    // Find nearest enemy unit within range across all lanes
+    let nearestEnemy = null;
+    let nearestDist = Infinity;
+
+    for (const unit of lobby.units) {
+        if (unit.owner !== enemyRole || unit.state === 'dead') continue;
+        const dist = Math.abs(unit.col - harborCol);
+        if (dist <= HARBOR_ATTACK_RANGE && dist < nearestDist) {
+            nearestDist = dist;
+            nearestEnemy = unit;
+        }
+    }
+
+    if (nearestEnemy) {
+        pd.lastHarborAttack = now;
+        damageUnit(nearestEnemy, HARBOR_DAMAGE, null, events);
+        events.push({
+            type: 'harbor_attack',
+            owner: role,
+            targetId: nearestEnemy.id,
+            targetLane: nearestEnemy.lane,
+            targetCol: nearestEnemy.col
+        });
+    }
+}
+
+// ============================================================
 // GAME LOOP
 // ============================================================
 
@@ -756,6 +797,10 @@ function gameTick(lobby) {
         unit.spawnedThisTick = false;
         tickUnit(lobby, unit, deltaTime, now, events);
     }
+
+    // Harbor defense cannons
+    harborDefenseTick(lobby, 'player1', now, events);
+    harborDefenseTick(lobby, 'player2', now, events);
 
     // Apply sea wall blocking
     applySeaWallBlocking(lobby);
@@ -862,6 +907,7 @@ function startGame(lobby) {
         pd.harborHp = 20;
         pd.seaWallCount = 0;
         pd.totalDeployed = 0;
+        pd.lastHarborAttack = 0;
         initializeHand(pd);
     }
 

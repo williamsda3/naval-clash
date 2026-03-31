@@ -273,8 +273,11 @@
             const [explosions, setExplosions] = useState([]);
             const [floatingTexts, setFloatingTexts] = useState([]);
             const [harborShaking, setHarborShaking] = useState({ left: false, right: false });
+            const [harborFiring, setHarborFiring] = useState({ left: false, right: false });
             const [resourcePulsing, setResourcePulsing] = useState(false);
             const prevResourceRef = useRef(5);
+            const prevHandRef = useRef([]);
+            const [newCardSlots, setNewCardSlots] = useState(new Set());
             const logRef = useRef(null);
 
             const addLog = useCallback((message) => {
@@ -290,6 +293,21 @@
                     logRef.current.scrollTop = logRef.current.scrollHeight;
                 }
             }, [gameLog]);
+
+            // Card slide-in animation when a new card draws
+            useEffect(() => {
+                if (hand.length === 0) { prevHandRef.current = hand; return; }
+                const changed = new Set();
+                hand.forEach((card, idx) => {
+                    const prev = prevHandRef.current[idx];
+                    if (!prev || prev.unitType !== card.unitType) changed.add(idx);
+                });
+                if (changed.size > 0) {
+                    setNewCardSlots(changed);
+                    setTimeout(() => setNewCardSlots(new Set()), 420);
+                }
+                prevHandRef.current = hand;
+            }, [hand]);
 
             // Resource pulse animation
             useEffect(() => {
@@ -339,6 +357,13 @@
                             `Your harbor took ${evt.damage} damage! (${evt.remainingHp} HP)` :
                             `Enemy harbor took ${evt.damage} damage! (${evt.remainingHp} HP)`
                         );
+                    }
+                    if (evt.type === 'harbor_attack') {
+                        // My harbor fired = left side; enemy harbor fired = right side
+                        const isMyHarbor = evt.owner === playerRole;
+                        const side = isMyHarbor ? 'left' : 'right';
+                        setHarborFiring(prev => ({ ...prev, [side]: true }));
+                        setTimeout(() => setHarborFiring(prev => ({ ...prev, [side]: false })), 300);
                     }
                     if (evt.type === 'torpedo_barrage') {
                         addLog(`Torpedo barrage in lane ${evt.lane + 1}!`);
@@ -885,15 +910,21 @@
                                             </div>
 
                                             {/* Harbor zones */}
-                                            <div className={`harbor-structure absolute left-0 top-0 bottom-0 w-[5%] rounded-l-lg flex items-center justify-center ${
+                                            <div className={`harbor-structure absolute left-0 top-0 bottom-0 w-[5%] rounded-l-lg flex items-center justify-center overflow-hidden ${
                                                 harborShaking.left ? 'animate-harborShake' : ''
                                             }`}>
                                                 <span className="text-xl">{'\uD83C\uDFE0'}</span>
+                                                {harborFiring.left && (
+                                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-yellow-400 rounded-full animate-burst pointer-events-none" style={{zIndex:30}}></div>
+                                                )}
                                             </div>
-                                            <div className={`harbor-structure absolute right-0 top-0 bottom-0 w-[5%] rounded-r-lg flex items-center justify-center ${
+                                            <div className={`harbor-structure absolute right-0 top-0 bottom-0 w-[5%] rounded-r-lg flex items-center justify-center overflow-hidden ${
                                                 harborShaking.right ? 'animate-harborShake' : ''
                                             }`}>
                                                 <span className="text-xl">{'\uD83C\uDFE0'}</span>
+                                                {harborFiring.right && (
+                                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-yellow-400 rounded-full animate-burst pointer-events-none" style={{zIndex:30}}></div>
+                                                )}
                                             </div>
 
                                             {/* Deploy zone indicator */}
@@ -1033,6 +1064,7 @@
                                                         setSelectedCard(isSelected ? null : idx);
                                                     }}
                                                     className={`card relative w-[100px] rounded-xl border-2 p-2.5 select-none
+                                                        ${newCardSlots.has(idx) ? 'animate-slideInRight' : ''}
                                                         ${isSelected ? 'card-selected border-cyan-400 bg-gradient-to-b from-cyan-900/60 to-slate-800' :
                                                           canAfford ? `${catColor.border} bg-gradient-to-b ${catColor.bg} hover:border-slate-400` :
                                                           'card-disabled border-slate-700 bg-slate-800/60'}`}
