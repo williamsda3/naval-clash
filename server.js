@@ -732,9 +732,9 @@ function castTorpedoBarrage(lobby, owner, lane, events) {
 // HARBOR DEFENSE
 // ============================================================
 
-const HARBOR_ATTACK_COOLDOWN = 1500; // ms between shots
-const HARBOR_ATTACK_RANGE = 4;       // cols from harbor edge
-const HARBOR_DAMAGE = 2;
+const HARBOR_ATTACK_COOLDOWN = 3000; // ms between shots
+const HARBOR_ATTACK_RANGE = 3;       // cols from harbor edge
+const HARBOR_DAMAGE = 1;
 
 function harborDefenseTick(lobby, role, now, events) {
     const pd = lobby.players[role];
